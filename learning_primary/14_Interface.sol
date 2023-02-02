@@ -30,3 +30,8 @@ contract jinmao is dog {
         emit Log("jimao running");
     }
 }
+
+// abstract contract A{ function foo(uint a) public view returns(uint); }
+// contract A{ function foo(uint a) internal returns(uint); }
+// abstract contract A{ function foo(uint a) internal pure virtual returns(uint); }
+// contract A{ function foo(uint a) external pure virtual returns(uint); }
