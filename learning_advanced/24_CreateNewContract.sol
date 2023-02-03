@@ -8,6 +8,8 @@ pragma solidity ^0.8.4;
  * Contract x = new Contract{value: _value}(params)
  * Contract是要创建的合约名，x是合约对象（地址），如果构造函数是payable，
  * 可以创建时转入_value数量的ETH，params是新合约构造函数的参数。
+ * 新地址 = hash(创建者地址, nonce)
+ * nonce：该地址发送交易的总数,对于合约账户是创建的合约总数,每创建一个合约nonce+1
  */
 contract CreateNewContract {
     mapping(address => mapping(address => address)) public getPair; // 通过两个代币地址查Pair地址
@@ -23,7 +25,6 @@ contract CreateNewContract {
         getPair[tokenA][tokenB] = pairAddr;
         getPair[tokenB][tokenA] = pairAddr;
     }
-
 }
 
 contract Pair{
