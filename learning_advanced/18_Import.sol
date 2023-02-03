@@ -2,7 +2,7 @@
 pragma solidity ^0.8.4;
 
 // 通过文件相对位置import
-import '../learning_orimary/Exception.sol';
+import '../learning_primary/Exception.sol';
 // 通过网址引用
 import 'https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/Strings.sol';
 // 通过全局符号导入特定的合约

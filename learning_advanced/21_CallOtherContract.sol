@@ -6,7 +6,7 @@ contract CallOtherContract {
     /**
      * 方法一：传入目标合约地址，生成目标合约的引用
      */
-    function callGetBalance(address _address) public view returns(uint) {
+    function callGetBalance(address payable _address) public view returns(uint) {
         return OtherContract(_address).getBalance();
     }
 
@@ -20,7 +20,7 @@ contract CallOtherContract {
     /**
      * 方法三：创建合约变量
      */
-    function callGetX(address _address) public view returns(uint) {
+    function callGetX(address payable _address) public view returns(uint) {
         OtherContract oc = OtherContract(_address);
         // IOtherContract ioc = IOtherContract(_address); // 是警告不是报错！！！坑死人！
         return oc.getX();
@@ -29,7 +29,7 @@ contract CallOtherContract {
     /**
      * 方法四：当目标合约的函数是payable，可以通过调用它来给合约转账_Name(_Address).f{value: _Value}()
      */
-    function callAndSendEth(address _address, uint256 _x) payable public {
+    function callAndSendEth(address payable _address, uint256 _x) payable public {
         OtherContract(_address).setX{value: msg.value}(_x);
     }
 }
@@ -44,6 +44,9 @@ contract OtherContract is IOtherContract {
     uint256 private _x = 0; // 状态变量_x
     // 收到eth的事件，记录amount和gas
     event Log(uint amount, uint gas);
+
+    fallback() external payable{}
+    receive() external payable{}
     
     // 返回合约ETH余额
     function getBalance() view public override returns(uint) {
