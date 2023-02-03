@@ -46,9 +46,4 @@ contract ABI {
     function decode(bytes memory data) public pure returns(uint _x, address _addr, string memory _name, uint[2] memory _array) {
         (_x, _addr, _name, _array) = abi.decode(data, (uint, address, string, uint[2]));
     }
-
-    // 解码abiEncodeWithSelector生成的编码失败
-    function decode2(bytes memory data) public pure returns(string memory method, uint _x, address _addr, string memory _name, uint[2] memory _array) {
-        (method, _x, _addr, _name, _array) = abi.decode(data, (string, uint, address, string, uint[2]));
-    }
 }
