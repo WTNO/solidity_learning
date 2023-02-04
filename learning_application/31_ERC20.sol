@@ -45,7 +45,7 @@ contract ERC20 is IERC20 {
         // }
         // require(approvalNum >= value, "allowance not enough");
         allowance[from][msg.sender] -= value; // 不是应该是 allowance[授权方][被授权方] 吗？
-        balanceOf[msg.sender] -= value;
+        balanceOf[from] -= value;
         balanceOf[to] += value;
         emit Transfer(from, to, value);
         return true;
