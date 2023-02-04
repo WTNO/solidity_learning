@@ -39,11 +39,11 @@ contract ERC20 is IERC20 {
      */
     function transferFrom(address from, address to, uint256 value) external override returns(bool) {
         // 获取被授权方的授权数额
-        // uint256 approvalNum = allowance[from][msg.sender];
+        uint256 approvalNum = allowance[from][msg.sender];
         // if (approvalNum < value) {
         //     return false;
         // }
-        // require(approvalNum >= value, "allowance not enough");
+        require(approvalNum >= value, "allowance not enough");
         allowance[from][msg.sender] -= value; // 不是应该是 allowance[授权方][被授权方] 吗？
         balanceOf[from] -= value;
         balanceOf[to] += value;
