@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.4;
-import "./IER20.sol";
+import "./31_IERC20.sol";
 
 contract ERC20 is IERC20 {
     // 下面三个状态变量为public类型，会自动生成一个同名getter函数，实现IERC20规定的balanceOf(), allowance()和totalSupply()。
@@ -28,7 +28,7 @@ contract ERC20 is IERC20 {
         return true;
     }
 
-    function approve(address spender, uint256 value) external view override returns(bool) {
+    function approve(address spender, uint256 value) external override returns(bool) {
         allowance[msg.sender][spender] = value;
         emit Approval(msg.sender, spender, value);
         return true;
@@ -46,7 +46,7 @@ contract ERC20 is IERC20 {
         allowance[from][msg.sender] -= value; // 不是应该是 allowance[授权方][被授权方] 吗？
         balanceOf[msg.sender] -= value;
         balanceOf[to] += value;
-        emit Transfer(from, to, amount);
+        emit Transfer(from, to, value);
         return true;
     }
     
@@ -54,7 +54,7 @@ contract ERC20 is IERC20 {
      * 铸造代币函数，不在IERC20标准中。任何人可以铸造任意数量的代币，实际应用中会加权限管理，只有owner可以铸造代币：
      */
     function mint(uint amount) external {
-        require(msg.sender == owner, "YOU DON'T HAVE PERMISSION TO ACCESS");
+        // require(msg.sender == owner, "YOU DON'T HAVE PERMISSION TO ACCESS");
         balanceOf[msg.sender] += amount;
         totalSupply += amount;
         emit Transfer(address(0), msg.sender, amount);
@@ -64,7 +64,7 @@ contract ERC20 is IERC20 {
      * 销毁代币函数，不在IERC20标准中
      */
     function burn(uint amount) external {
-        require(msg.sender == owner, "YOU DON'T HAVE PERMISSION TO ACCESS");
+        // require(msg.sender == owner, "YOU DON'T HAVE PERMISSION TO ACCESS");
         balanceOf[msg.sender] -= amount;
         totalSupply -= amount;
         emit Transfer(msg.sender, address(0), amount);

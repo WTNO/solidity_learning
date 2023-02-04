@@ -39,7 +39,7 @@ interface IERC20 {
      *
      * 释放 {Approval} 事件.
      */
-    function approve(address spender, uint256 value) external view returns(bool);
+    function approve(address spender, uint256 value) external returns(bool);
 
     /**
      * @dev 通过授权机制，从`from`账户向`to`账户转账`amount`数量代币。转账的部分会从调用者的`allowance`中扣除。
