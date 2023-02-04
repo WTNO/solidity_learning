@@ -15,7 +15,7 @@ contract Airdrop {
      * @param _addresses 空投地址数组
      * @param _amounts 代币数量数组（每个地址的空投数量）
      */
-    function sendAirdrop(address _token, address[] calldata _addresses, uint256[] calldata _amounts) external {
+    function sendAirdrop(address _token, address[] calldata _addresses, uint256[] calldata _amounts) external payable {
         require(_addresses.length == _amounts.length, "Lengths of Addresses and Amounts NOT EQUAL");
         IERC20 ierc20 = IERC20(_token);
         // 统计空投所需代币总和
