@@ -4,6 +4,7 @@ import "./34_ERC721.sol";
 import "./37_ECDSA.sol";
 
 // 私钥和公钥的关系是？
+// 私钥: 0x227dbb8586117d55284e26620bc76534dfbd2394be34cf4a09cb775d593b6f2b
 // signer/公钥:0xe16C1623c1AA7D919cd2241d8b36d9E79C1Be2A2
 // account:0x5B38Da6a701c568545dCfcB03FcB875f56beddC4
 // token:0
