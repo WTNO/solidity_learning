@@ -3,3 +3,4 @@
 /learning_advanced/artifacts
 /learning_application/artifacts
 /.deps
+/.prettierrc.json
