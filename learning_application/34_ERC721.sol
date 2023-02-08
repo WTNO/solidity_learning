@@ -9,7 +9,7 @@ import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contr
 
 contract ERC721 is IERC721, IERC721Metadata {
     using Address for address; // 使用Address库，用isContract来判断地址是否为合约
-    using Strings for uint256; // 使用String库，
+    using Strings for uint256; // 使用String库
     
     // Token名称
     string public override name;
