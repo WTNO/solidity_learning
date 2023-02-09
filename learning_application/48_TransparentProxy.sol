@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.4;
 
-// 透明代理合约
-// 限制管理员的权限，不让他调用任何逻辑合约的函数，解决函数选择器冲突（说实话就加了一个admin验证，没看懂怎么解决了）
+// 透明代理合约，用于解决代理合约和逻辑合约之间的函数选择器冲突
+// 限制管理员的权限，不让他调用任何逻辑合约的函数，解决函数选择器冲突（指的是通过transact调用吗？）
 contract TransparentProxy {
     // logic合约地址
     address implementation;
