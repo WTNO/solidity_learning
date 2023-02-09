@@ -111,6 +111,7 @@ contract TimeLock {
             callData = data;
         } else {
             // 这里不是应该使用encodeWithSignature吗？
+            // byte4的作用是取哈希的前四个字节(函数选择器)
             callData = abi.encodePacked(bytes4(keccak256(bytes(signature))), data);
         }
         // 利用call执行交易
