@@ -1,6 +1,7 @@
 /artifacts
 /learning_primary/artifacts
 /learning_advanced/artifacts
+/contract_security/*/artifacts
 /learning_application/artifacts
 /.deps
 /.prettierrc.json
