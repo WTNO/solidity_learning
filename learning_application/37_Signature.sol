@@ -10,7 +10,7 @@ import "./37_ECDSA.sol";
 // token:0
 // 消息：0x1bf2c0ce4546651a1a2feb457b39d891a6b83931cc2454434f39961345ac378c
 // 以太坊签名消息：0xb42ca4636f721c7a331923e764587e98ec577cea1a185f60dfcc14dbb9bd900b
-// 签名消息signature（通过钱包或者web3.py签名，过程中会用到私钥，暂时没懂）:0x390d704d7ab732ce034203599ee93dd5d3cb0d4d1d7c600ac11726659489773d559b12d220f99f41d17651b0c1c6a669d346a397f8541760d6b32a5725378b241c
+// 签名消息signature（通过钱包或者web3.py签名，过程中会用到私钥，暂时没懂，由 消息+账号 创建）:0x390d704d7ab732ce034203599ee93dd5d3cb0d4d1d7c600ac11726659489773d559b12d220f99f41d17651b0c1c6a669d346a397f8541760d6b32a5725378b241c
 contract Signature is ERC721{
     // 签名地址
     address immutable public signer;
