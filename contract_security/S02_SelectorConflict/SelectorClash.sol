@@ -19,11 +19,9 @@ contract SelectorClash {
         bytes memory _bytes1,
         uint64 _num
     ) public returns (bool success) {
-        bytes memory signature1 = abi.encodeWithSignature(
-            "putCurEpochConPubKeyBytes()",
-            _method
-        );
+        bytes memory signature1 = abi.encodeWithSelector(bytes4(keccak256("putCurEpochConPubKeyBytes(bytes)")), _method);
         emit LOG(signature1);
+
         bytes memory signature2 = abi.encodePacked(
             bytes4(keccak256(abi.encodePacked(_method, "(bytes,bytes,uint64)"))),
             abi.encode(_bytes, _bytes1, _num)
