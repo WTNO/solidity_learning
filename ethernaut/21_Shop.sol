@@ -10,6 +10,15 @@ interface Buyer {
  * 1.shop合约预计由买家使用
  * 2.了解view函数的限制
  *
+ * 解题关键：view函数中可以调用staticcall，不会改变状态，所谓修改状态，是指以下8种情况：
+ * 1.写状态变量
+ * 2.触发事件(emit events)
+ * 3.创建其他合约
+ * 4.使用selfdestruct
+ * 5.通过call发送以太币
+ * 6.使用call调用任何没有被标记为view或者pure的函数
+ * 7.使用低级的call
+ * 8.使用包含opcode的内联汇编
  */
 contract Shop {
     uint256 public price = 100;
