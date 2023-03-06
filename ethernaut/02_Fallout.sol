@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.6.0;
 
-// import "@openzeppelin-contracts-06/math/SafeMath.sol";
-// import "github.com/OpenZeppelin/zeppelin-solidity/contracts/math/SafeMath.sol";
-import 'zeppelin-solidity/contracts/math/SafeMath.sol';
-
+import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v3.1.0/contracts/math/SafeMath.sol";
 
 /**
  * 获得以下合约的所有权来完成这一关
- * 
+ *
  * 下面代码中的Fal1out并不是构造器，中间第二个l其实是1，可以直接调用这个方法！！！
  */
 contract Fallout {
