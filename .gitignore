@@ -5,5 +5,6 @@
 /contract_security/artifacts
 /learning_application/artifacts
 /ethernaut/artifacts
+/ethernaut_again/artifacts
 /.deps
 /.prettierrc.json
