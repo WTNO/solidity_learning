@@ -2,16 +2,15 @@
 pragma solidity ^0.8.0;
 
 contract MagicNum {
+    address public solver;
 
-  address public solver;
+    constructor() {}
 
-  constructor() {}
+    function setSolver(address _solver) public {
+        solver = _solver;
+    }
 
-  function setSolver(address _solver) public {
-    solver = _solver;
-  }
-
-  /*
+    /*
     ____________/\\\_______/\\\\\\\\\_____        
      __________/\\\\\_____/\\\///////\\\___       
       ________/\\\/\\\____\///______\//\\\__      
@@ -72,7 +71,7 @@ contract MagicNum {
 /* 构造结束 */
 /* 执行开始,返回42 = 2A */
 
-// PUSH1 0x2A 
+// PUSH1 0x2A
 // PUSH1 0x40 // 存储在0x40的位置
 // MSTORE
 
