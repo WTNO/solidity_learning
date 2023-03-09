@@ -153,7 +153,7 @@ contract Attack {
 
         return bytesArray2;
     }
-
+    
     // 4.在PuzzleProxy合约中执行execute取款：await contract.execute(player,toWei('0.002'),0x0)
 
     // 5.此时余额已清零，直接设定maxBalance：await contract.setMaxBalance(player)
