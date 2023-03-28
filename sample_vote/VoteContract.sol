@@ -25,7 +25,8 @@ contract VoteContract {
     //投票，选票+1
     function vote(bytes32 option) public timeLimited {
         // 每个用户只能投票一次,且限制为账户地址，不能是合约，以防创建大量合约操纵结果
-        require(voteRecord[tx.origin], "Each user is eligible for one vote only");
+        require(!voteRecord[tx.origin], "Each user is eligible for one vote only");
+        voteRecord[tx.origin] = true;
         voteResult[option] +=1;
     }
 
