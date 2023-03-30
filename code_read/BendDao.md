@@ -3,7 +3,7 @@ BendDAO 是一种去中心化的非托管 NFT 流动性和借贷协议，用户�
 
 # <a href="https://github.com/BendDAO/bend-lending-protocol">贷款协议</a>
 > 主要合约：LendPoolAddressesProvider 和 LendPoolAddressesProviderRegistry 都控制协议的可升级性，包括储备和 NFT 列表以及协议参数的更改。BEND 持有者将通过 BendDAO 治理控制两者。
-## <a href="https://github.com/BendDAO/bend-lending-protocol/blob/main/contracts/protocol/LendPool.sol">LendPool（借出池）</a>
+## <a href="https://github.com/BendDAO/bend-lending-protocol/blob/main/contracts/protocol/LendPool.sol">1. LendPool（借出池）</a>
 LendPool 合约是协议的主合约。它公开了所有可以使用 Solidity 或 web3 库调用的面向用户的操作。
 
 代码学习：
@@ -14,22 +14,197 @@ LendPool 合约是协议的主合约。它公开了所有可以使用 Solidity �
 5. 所有逻辑全部写在各种Logic逻辑合约中；
 6. 传参采用struct，全部写在DataTypes中。
 
-### deposit
-将一定数量的标的资产存入储备，作为回报获得覆盖的bTokens。 例如，用户存入 100 USDC 并获得 100 bUSDC的回报。
+### 1.1 deposit
+将一定数量的基础资产存入储备中，作为回报获得对应的bToken。例如，用户存入100个USDC，获得100个bUSDC。
+
+逻辑代码位置：SupplyLogic.sol
 ```java
     // 使用OpenZeppelin合约的官方分支contracts-upgradeable，是可升级合约
     IERC20Upgradeable(params.asset).safeTransferFrom(params.initiator, bToken, params.amount);
     IBToken(bToken).mint(params.onBehalfOf, params.amount, reserve.liquidityIndex);
 ```
-### withdraw
+### 1.2 withdraw
 从储备中提取一定数量的基础资产，销毁所拥有的等量 bTokens。
+
+逻辑代码位置：SupplyLogic.sol
 ```java
     // 提取资产和销毁bToken两个操作都在BToken中完成
     IBToken(bToken).burn(params.initiator, params.to, amountToWithdraw, reserve.liquidityIndex);
 ```
 > BToken实施了大多数标准的 ERC20 代币方法并稍作修改，以及 Bend 特定方法
 
+### 1.3 borrow
+允许用户借出一定数量的储备基础资产。例如，用户借出100个USDC，在其钱包中收到100个USDC，并将抵押资产锁定在合约中。
 
+逻辑代码位置：BorrowLogic.sol
+```java
+    if (vars.loanId == 0) {
+        // 如果资产没抵押过，抵押资产，创建贷款
+        IERC721Upgradeable(params.nftAsset).safeTransferFrom(vars.initiator, address(this),   params.nftTokenId);
+        vars.loanId = ILendPoolLoan(vars.loanAddress).createLoan(...);
+    } else {
+        // 如果资产抵押过，更新贷款状态
+        ILendPoolLoan(vars.loanAddress).updateLoan(...);
+    }
+
+    // 分配债务代币
+    IDebtToken(reserveData.debtTokenAddress).mint(...);
+
+    // 根据最新的借贷金额（利用率）更新利率。
+    reserveData.updateInterestRates(params.asset, reserveData.bTokenAddress, 0, params.amount);
+    // 借出储备基础资产
+    IBToken(reserveData.bTokenAddress).transferUnderlyingTo(vars.initiator, params.amount);
+```
+
+### 1.4 repay
+还清特定储备中的借入金额，销毁相应的贷款，例如，用户还清100个USDC，销毁贷款并收回抵押资产。
+
+逻辑代码位置：BorrowLogic.sol
+```java
+    vars.repayAmount = vars.borrowAmount;
+    vars.isUpdate = false;
+    if (params.amount < vars.repayAmount) {
+      vars.isUpdate = true;
+      vars.repayAmount = params.amount;
+    }
+    if (vars.isUpdate) {
+        // 如果没有全部还清
+        ILendPoolLoan(vars.poolLoan).updateLoan(...);
+    } else {
+        // 如果全部还清
+        ILendPoolLoan(vars.poolLoan).repayLoan(...);
+    }
+    // 销毁债务代币
+    IDebtToken(reserveData.debtTokenAddress).burn(loanData.borrower, vars.repayAmount, reserveData.variableBorrowIndex);
+
+    // 根据最新的借贷金额（利用率）更新利率。
+    reserveData.updateInterestRates(loanData.reserveAsset, reserveData.bTokenAddress, vars.repayAmount, 0);
+
+    // 将还款金额从msg.sender转移至bToken。
+    IERC20Upgradeable(loanData.reserveAsset).safeTransferFrom(
+      vars.initiator,
+      reserveData.bTokenAddress,
+      vars.repayAmount
+    );
+
+    // 收回抵押资产
+    if (!vars.isUpdate) {
+      IERC721Upgradeable(loanData.nftAsset).safeTransferFrom(address(this), loanData.borrower, params.nftTokenId);
+    }
+```
+> 从上面两个方法可以看出货币类型的代币采用ERC20，如USDC，NFT类型采用ERC721。
+
+### 1.5 auction
+这个函数用于拍卖出于不良状态的抵押物。调用者（清算方）希望购买被清算用户的抵押资产。Bend采用英格兰拍卖机制，最高出价者将获胜。
+
+逻辑代码位置：LiquidateLogic.sol
+```java
+// 计算贷款清算价格
+(vars.borrowAmount, vars.thresholdPrice, vars.liquidatePrice) = GenericLogic.calculateLoanLiquidatePrice(...);
+
+// 首次出价需要销毁债务代币并将储备转移至bToken。
+// Active状态：贷款已初始化，资金已发放给借款人并抵押品已持有。
+if (loanData.state == DataTypes.LoanState.Active) { // 这里的状态判断没看懂
+    // 借款的累计债务必须超过阈值（健康因子低于1.0）
+    require(vars.borrowAmount > vars.thresholdPrice, Errors.LP_BORROW_NOT_EXCEED_LIQUIDATION_THRESHOLD);
+    // 出价必须高于借入债务金额。
+    require(params.bidPrice >= vars.borrowAmount, Errors.LPL_BID_PRICE_LESS_THAN_BORROW);
+    // 出价必须高于清算价格。
+    require(params.bidPrice >= vars.liquidatePrice, Errors.LPL_BID_PRICE_LESS_THAN_LIQUIDATION_PRICE);
+} else {
+    // 出价必须高于借入债务金额。
+    require(params.bidPrice >= vars.borrowAmount, Errors.LPL_BID_PRICE_LESS_THAN_BORROW);
+
+    // 如果暂停持续时间大于0，且拍卖开始时间在暂停开始时间之前
+    // 说明拍卖开始后暂停过一段时间，需要设置额外拍卖时间
+    if ((poolStates.pauseDurationTime > 0) && (loanData.bidStartTimestamp <= poolStates.pauseStartTime)) {
+        vars.extraAuctionDuration = poolStates.pauseDurationTime;
+    }
+    // 拍卖结束时间=出价开始时间 + 额外拍卖时间 + 配置中的贷款持续时间
+    vars.auctionEndTimestamp =
+        loanData.bidStartTimestamp +
+        vars.extraAuctionDuration +
+        (nftData.configuration.getAuctionDuration() * 1 hours);
+    // 当前区块时间必须小于拍卖结束时间
+    require(block.timestamp <= vars.auctionEndTimestamp, Errors.LPL_BID_AUCTION_DURATION_HAS_END);
+
+    // 出价必须高于最高出价+增量。
+    vars.minBidDelta = vars.borrowAmount.percentMul(PercentageMath.ONE_PERCENT);
+    require(params.bidPrice >= (loanData.bidPrice + vars.minBidDelta), Errors.LPL_BID_PRICE_LESS_THAN_HIGHEST_PRICE);
+}
+// 这个方法用于确保贷款状态有效：价格必须高于当前最高价格和贷款必须处于“激活”或“拍卖”状态。
+ILendPoolLoan(vars.loanAddress).auctionLoan(...);
+// 将最高出价者的出价金额锁定到借贷池。
+IERC20Upgradeable(loanData.reserveAsset).safeTransferFrom(vars.initiator, address(this), params.bidPrice);
+// 将最后一次出价的金额从借贷池中退回给上一个出价者。
+if (loanData.bidderAddress != address(0)) {
+    IERC20Upgradeable(loanData.reserveAsset).safeTransfer(loanData.bidderAddress, loanData.bidPrice);
+}
+```
+
+### 1.6 redeem
+这个函数用于赎回非健康NFT贷款，其状态处于拍卖中。调用者必须是贷款的借款人。借款人可以在赎回时间到期之前赎回自己的东西。
+```java
+// 如果暂停持续时间大于0，且拍卖开始时间在暂停开始时间之前
+// 说明拍卖开始后暂停过一段时间，需要设置额外赎回时间
+if ((poolStates.pauseDurationTime > 0) && (loanData.bidStartTimestamp <= poolStates.pauseStartTime)) {
+    vars.extraRedeemDuration = poolStates.pauseDurationTime;
+}
+// 赎回结束时间=出价开始时间 + 额外赎回时间 + 配置中的赎回持续时间
+vars.redeemEndTimestamp = (loanData.bidStartTimestamp +
+  vars.extraRedeemDuration +
+  nftData.configuration.getRedeemDuration() *
+  1 hours);
+// 当前区块时间必须小于赎回结束时间
+require(block.timestamp <= vars.redeemEndTimestamp, Errors.LPL_BID_REDEEM_DURATION_HAS_END);
+
+// 在获取依赖于最新借贷指数的借贷金额之前，必须先更新状态。
+reserveData.updateState();
+
+// 计算贷款清算价格
+(vars.borrowAmount, , ) = GenericLogic.calculateLoanLiquidatePrice(...);
+
+// 检查出价是否在最小值和最大值范围内
+(, vars.bidFine) = GenericLogic.calculateLoanBidFine(...);
+
+// 检查出价是否足够
+require(vars.bidFine <= params.bidFine, Errors.LPL_INVALID_BID_FINE);
+
+// 检查最小的偿还债务金额，使用配置中的赎回阈值。
+vars.repayAmount = params.amount;
+vars.minRepayAmount = vars.borrowAmount.percentMul(nftData.configuration.getRedeemThreshold());
+require(vars.repayAmount >= vars.minRepayAmount, Errors.LP_AMOUNT_LESS_THAN_REDEEM_THRESHOLD);
+
+// 检查最大的偿还债务金额，为借款金额的90%
+vars.maxRepayAmount = vars.borrowAmount.percentMul(PercentageMath.PERCENTAGE_FACTOR - PercentageMathTEN_PERCENT);
+require(vars.repayAmount <= vars.maxRepayAmount, Errors.LP_AMOUNT_GREATER_THAN_MAX_REPAY);
+
+// 此函数要求：1.调用者必须是贷款的持有者；2.贷款必须处于“拍卖”状态。
+ILendPoolLoan(vars.poolLoan).redeemLoan(...);
+
+// 销毁债务代币
+IDebtToken(reserveData.debtTokenAddress).burn(loanData.borrower, vars.repayAmount, reserveDatavariableBorrowIndex);
+
+// 根据最新的借贷金额（利用率）更新利率。
+reserveData.updateInterestRates(loanData.reserveAsset, reserveData.bTokenAddress, vars.repayAmount, 0);
+
+// 将还款金额从借款人转移到bToken。
+IERC20Upgradeable(loanData.reserveAsset).safeTransferFrom(
+  vars.initiator,
+  reserveData.bTokenAddress,
+  vars.repayAmount
+);
+
+if (loanData.bidderAddress != address(0)) {
+    // 将最后一次出价的金额从借贷池中退回给出价者
+    IERC20Upgradeable(loanData.reserveAsset).safeTransfer(loanData.bidderAddress, loanData.bidPrice);
+    // 将出价罚款金额从借款人转移到第一个出价者
+    IERC20Upgradeable(loanData.reserveAsset).safeTransferFrom(vars.initiator, loanData.firstBidderAddress, vars.bidFine);
+}
+```
+
+### liquidate
+此函数用于清算状态为拍卖的非健康NFT贷款。调用者（清算者）购买被清算用户的抵押资产，并收回抵押资产。
 
 
 ## <a href="https://github.com/BendDAO/bend-lending-protocol/blob/main/contracts/protocol/LendPoolLoan.sol">LendPoolLoan（借出池贷款）</a>
