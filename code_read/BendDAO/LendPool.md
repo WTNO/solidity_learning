@@ -133,6 +133,7 @@ if (loanData.state == DataTypes.LoanState.Active) { // 这里的状态判断没�
     require(params.bidPrice >= (loanData.bidPrice + vars.minBidDelta), Errors.LPL_BID_PRICE_LESS_THAN_HIGHEST_PRICE);
 }
 // 这个方法用于确保贷款状态有效：价格必须高于当前最高价格和贷款必须处于“激活”或“拍卖”状态。
+// 此函数里面修改了一系列贷款的状态
 ILendPoolLoan(vars.loanAddress).auctionLoan(...);
 // 将最高出价者的出价金额锁定到借贷池。
 IERC20Upgradeable(loanData.reserveAsset).safeTransferFrom(vars.initiator, address(this), params.bidPrice);
@@ -205,14 +206,58 @@ if (loanData.bidderAddress != address(0)) {
 
 ### liquidate
 此函数用于清算状态为拍卖的非健康NFT贷款。调用者（清算者）购买被清算用户的抵押资产，并收回抵押资产。
+```java
+// 省略前面清算时间和清算价格的计算
 
+// 最后的出价价格无法覆盖借款金额
+if (loanData.bidPrice < vars.borrowAmount) {
+    // 计算额外债务金额
+    vars.extraDebtAmount = vars.borrowAmount - loanData.bidPrice;
+    // params.amount:用于偿还债务的额外金额。大多数情况下应该为 0
+    require(params.amount >= vars.extraDebtAmount, Errors.LP_AMOUNT_LESS_THAN_EXTRA_DEBT);
+}
 
-## <a href="https://github.com/BendDAO/bend-lending-protocol/blob/main/contracts/protocol/LendPoolLoan.sol">LendPoolLoan（借出池贷款）</a>
-## <a href="https://github.com/BendDAO/bend-lending-protocol/blob/main/contracts/protocol/LendPoolAddressesProvider.sol">LendPoolAddressesProvider（借出池地址提供者）</a>
-## <a href="https://github.com/BendDAO/bend-lending-protocol/blob/main/contracts/protocol/LendPoolAddressesProviderRegistry.sol">LendPoolAddressesProviderRegistry（借出池地址提供商注册表）</a>
-## <a href="https://github.com/BendDAO/bend-lending-protocol/blob/main/contracts/protocol/BToken.sol">BTokens</a>
-## <a href="https://github.com/BendDAO/bend-lending-protocol/blob/main/contracts/protocol/DebtToken.sol">debtTokens（债务代币）</a>
-## <a href="">boundNFTs</a>
-<br>
+// 如果投标金额大于借款金额
+if (loanData.bidPrice > vars.borrowAmount) {
+    vars.remainAmount = loanData.bidPrice - vars.borrowAmount;
+}
 
-# <a href="https://github.com/BendDAO/bend-lending-protocol">交换协议</a>
+// 此函数要求：1.调用者必须发送本金+利息；2.贷款必须处于active状态。
+ILendPoolLoan(vars.poolLoan).liquidateLoan(...);
+
+// 销毁债务代币
+IDebtToken(reserveData.debtTokenAddress).burn(
+    loanData.borrower,
+    vars.borrowAmount,
+    reserveData.variableBorrowIndex
+);
+
+// 根据最新的借款金额（利用率）更新利率。
+reserveData.updateInterestRates(loanData.reserveAsset, reserveData.bTokenAddress, vars.borrowAmount,0);
+
+// 将额外的借款金额从清算人（调用者）转移到借贷池。
+if (vars.extraDebtAmount > 0) {
+    IERC20Upgradeable(loanData.reserveAsset).safeTransferFrom(vars.initiator, address(this),  varsextraDebtAmount);
+}
+// 从借贷池转移借款金额到bToken，还清债务。
+IERC20Upgradeable(loanData.reserveAsset).safeTransfer(reserveData.bTokenAddress, vars.borrowAmount);
+
+// 将剩余金额转移给借款人
+if (vars.remainAmount > 0) {
+    IERC20Upgradeable(loanData.reserveAsset).safeTransfer(loanData.borrower, vars.remainAmount);
+}
+
+// 将ERC721代币转移给竞拍者
+IERC721Upgradeable(loanData.nftAsset).safeTransferFrom(address(this), loanData.bidderAddress, paramsnftTokenId);
+```
+> 关于拍卖auction和清算liquidate两个函数的理解（仅限当前，后面可能会改）：
+>
+> 1. 在拍卖中，采取的是价高者得，条件是出价必须高于借款金额和清算金额，每轮竞拍加价必须大于1%；
+>
+> 2. 在清算中，逻辑更加复杂，待学习完LendPoolLoan进一步理解。
+>
+> 3. 两者联系是拍卖中付完款后只是将loan中的竞拍者bidderAddress改为了最后一个竞拍成功的代表onBehalfOf，并没有将抵押物NFT转移给竞拍者；而清算则是在拍卖结束后来调用此函数进行清算，付款并获取抵押物NFT（可能理解有误，待进一步学习）。
+
+### View Methods
+<a href="https://docs.benddao.xyz/developers/lending-protocol/lendpool#view-methods">直接查看文档</a>
+<a href="https://github.com/BendDAO/bend-lending-protocol/blob/main/contracts/protocol/LendPool.sol">源码</a>
