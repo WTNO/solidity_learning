@@ -16,6 +16,14 @@ LendPool 合约是协议的主合约。它公开了所有可以使用 Solidity �
 
 ### 1.1 deposit
 将一定数量的基础资产存入储备中，作为回报获得对应的bToken。例如，用户存入100个USDC，获得100个bUSDC。
+> 将地址为asset的ERC20代币从msg.sender转移amount个至BToken地址（即存入），BToken mint amountScaled个B代币至onBehalfOf地址（amountScaled = amount.rayDiv(index)）。
+
+| 参数名 | 类型 | 描述 |
+| ---- | ---- | ---- |
+|asset|address|存入的基础资产的地址。|
+|amount|uint256|需要存入的基础资产数量，以基础资产小数单位表示。|
+|onBehalfOf|address|接收bToken的地址。当aToken应该发送给调用者时，请使用msg.sender。|
+|referralCode|uint16|推荐计划的推荐代码。如果没有推荐，请使用0。|
 
 逻辑代码位置：SupplyLogic.sol
 ```java
@@ -25,16 +33,35 @@ LendPool 合约是协议的主合约。它公开了所有可以使用 Solidity �
 ```
 ### 1.2 withdraw
 从储备中提取一定数量的基础资产，销毁所拥有的等量 bTokens。
+> 
+| 参数名 | 类型 | 描述 |
+| ---- | ---- | ---- |
+|asset|address|存入的基础资产的地址。|
+|amount|uint256|要提取的基础资产数量，以基础资产小数单位表示。|
+|to|address|接收基础资产的地址。如果用户想要将其发送到自己的钱包，则与msg.sender相同，如果受益人是不同的钱包，则为不同的地址。|
 
 逻辑代码位置：SupplyLogic.sol
 ```java
     // 提取资产和销毁bToken两个操作都在BToken中完成
     IBToken(bToken).burn(params.initiator, params.to, amountToWithdraw, reserve.liquidityIndex);
 ```
-> BToken实施了大多数标准的 ERC20 代币方法并稍作修改，以及 Bend 特定方法
+> * 从user销毁bToken，并将相应数量的基础资产发送到to地址。
+>
+> * 从burn方法可以看出每一个基础资产(即ERC20合约)都有相对应的BToken
+> 
+> * BToken实施了大多数标准的 ERC20 代币方法并稍作修改，以及 Bend 特定方法
 
 ### 1.3 borrow
 允许用户借出一定数量的储备基础资产。例如，用户借出100个USDC，在其钱包中收到100个USDC，并将抵押资产锁定在合约中。
+
+| 参数名 | 类型 | 描述 |
+| ---- | ---- | ---- |
+|asset|address|要借入的基础资产的地址。|
+|amount|uint256|要借入的基础资产数量，以基础资产小数单位表示。|
+|nftAsset|address|用作抵押品的基础NFT的地址。|
+|nftTokenId|uint256|用作抵押品的基础NFT的代币ID。|
+|onBehalfOf|address|将获得贷款的用户的地址。如果借款人想要根据自己的抵押品借款，则应该是调用该函数的借款人的地址。|
+|referralCode|uint16|推荐计划的推荐代码。如果没有推荐，请使用0。|
 
 逻辑代码位置：BorrowLogic.sol
 ```java
@@ -58,6 +85,12 @@ LendPool 合约是协议的主合约。它公开了所有可以使用 Solidity �
 
 ### 1.4 repay
 还清特定储备中的借入金额，销毁相应的贷款，例如，用户还清100个USDC，销毁贷款并收回抵押资产。
+
+| 参数名 | 类型 | 描述 |
+| ---- | ---- | ---- |
+|nftAsset|address|用作抵押品的基础NFT的地址。|
+|nftTokenId|uint256|用作抵押品的基础NFT的代币ID。|
+|amount|uint256|要还款的基础资产金额，以基础资产小数单位表示。仅在还款不是代表第三方执行时，使用type（uint256）.max还清整个债务。如果代表另一个用户进行还款，则建议发送略高于当前借入金额的金额。|
 
 逻辑代码位置：BorrowLogic.sol
 ```java
@@ -96,6 +129,13 @@ LendPool 合约是协议的主合约。它公开了所有可以使用 Solidity �
 
 ### 1.5 auction
 这个函数用于拍卖出于不良状态的抵押物。调用者（清算方）希望购买被清算用户的抵押资产。Bend采用英格兰拍卖机制，最高出价者将获胜。
+
+| 参数名 | 类型 | 描述 |
+| ---- | ---- | ---- |
+|nftAsset|address|用作抵押品的基础NFT的地址。|
+|nftTokenId|uint256|用作抵押品的基础NFT的代币ID。|
+|bidPrice|uint256|清算人想要购买基础NFT的出价价格。|
+|onBehalfOf|address|将获得基础NFT的用户的地址。如果用户想要将其发送到自己的钱包，则与msg.sender相同，如果NFT的受益人是不同的钱包，则为不同的地址。|
 
 逻辑代码位置：LiquidateLogic.sol
 ```java
@@ -145,6 +185,14 @@ if (loanData.bidderAddress != address(0)) {
 
 ### 1.6 redeem
 这个函数用于赎回非健康NFT贷款，其状态处于拍卖中。调用者必须是贷款的借款人。借款人可以在赎回时间到期之前赎回自己的东西。
+
+| 参数名 | 类型 | 描述 |
+| ---- | ---- | ---- |
+|nftAsset|address|用作抵押品的基础NFT的地址。|
+|nftTokenId|uint256|用作抵押品的基础NFT的代币ID。|
+|amount|uint256|还清债务的金额。|
+|bidFine|uint256|出价罚款的金额。（类似于利息？）|
+
 ```java
 // 如果暂停持续时间大于0，且拍卖开始时间在暂停开始时间之前
 // 说明拍卖开始后暂停过一段时间，需要设置额外赎回时间
@@ -206,6 +254,13 @@ if (loanData.bidderAddress != address(0)) {
 
 ### liquidate
 此函数用于清算状态为拍卖的非健康NFT贷款。调用者（清算者）购买被清算用户的抵押资产，并收回抵押资产。
+
+| 参数名 | 类型 | 描述 |
+| ---- | ---- | ---- |
+|nftAsset|address|用作抵押品的基础NFT的地址。|
+|nftTokenId|uint256|用作抵押品的基础NFT的代币ID。|
+|amount|uint256|还清债务的额外金额。在大多数情况下应该为0。|
+
 ```java
 // 省略前面清算时间和清算价格的计算
 
