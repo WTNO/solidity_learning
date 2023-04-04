@@ -82,6 +82,25 @@ LendPool 合约是协议的主合约。它公开了所有可以使用 Solidity �
     // 借出储备基础资产
     IBToken(reserveData.bTokenAddress).transferUnderlyingTo(vars.initiator, params.amount);
 ```
+```js
+function createLoan(..., address nftAsset, uint256 nftTokenId, address bNftAddress, ...)
+external override onlyLendPool returns (uint256) {
+    ...
+    // 存入NFT
+    IERC721Upgradeable(nftAsset).safeTransferFrom(_msgSender(), address(this), nftTokenId);
+    // 铸造一个绑定NFT作为债务NFT
+    IBNFT(bNftAddress).mint(onBehalfOf, nftTokenId);
+
+    ...
+}
+```
+
+> 当借款人在Bend DAO中存入NFT时，将铸造一个绑定NFT作为债务NFT。
+> 
+> * 绑定NFT旨在为金库功能提供完全的安全性和相同的数字自我表达。
+> * 绑定NFT具有与您所拥有的原始NFT相同的元数据和代币ID，这意味着您可以在您的钱包中使用绑定NFT作为您的社交媒体PFP。由于绑定NFT是不可转让和不可批准的，因此没有人可以窃取您的绑定NFT。
+> * 债务 NFT 在借贷和偿还时铸造和销毁。
+> * 使用boundNFT可以获取任何空投、可领取和可铸造的资产。
 
 ### 1.4 repay
 还清特定储备中的借入金额，销毁相应的贷款，例如，用户还清100个USDC，销毁贷款并收回抵押资产。
@@ -307,9 +326,9 @@ IERC721Upgradeable(loanData.nftAsset).safeTransferFrom(address(this), loanData.b
 ```
 > 关于拍卖auction和清算liquidate两个函数的理解（仅限当前，后面可能会改）：
 >
-> 1. 在拍卖中，采取的是价高者得，条件是出价必须高于借款金额和清算金额，每轮竞拍加价必须大于1%；
+> 1. 在拍卖中，采取的是价高者得，条件是出价必须高于借款金额和清算金额（累计债务总额），每轮竞拍加价必须大于1%；
 >
-> 2. 在清算中，逻辑更加复杂，待学习完LendPoolLoan进一步理解。
+> 2. 在清算中，逻辑更加复杂，待学习完LendPoolLoan进一步理解。健康因素低于1时会触发清算。
 >
 > 3. 两者联系是拍卖中付完款后只是将loan中的竞拍者bidderAddress改为了最后一个竞拍成功的代表onBehalfOf，并没有将抵押物NFT转移给竞拍者；而清算则是在拍卖结束后来调用此函数进行清算，付款并获取抵押物NFT（可能理解有误，待进一步学习）。
 
