@@ -42,12 +42,12 @@ BuyCrowdfund通过CrowdfundFactory合约中的createBuyCrowdfund()函数创建�
 * `uint256 nftTokenId`：被购买NFT的ID。
 * `uint40 duration`：众筹竞标该NFT的时间长度，以秒为单位。
 * `uint96 maximumPrice`：该众筹最多愿意支付的ETH数量。如果为零，则没有最大值。
-* `bool onlyHostCanBuy`：如果为true，则只有主办方可以调用buy()。
+* `bool onlyHostCanBuy`：如果为true，则只有主办方可以调用`buy()`。
 
 主要逻辑：
 * 旨在购买特定的ERC721合约+代币ID(指定NFT，在前端界面可以指定一个或者一组NFT)。
 * 在活动期间，用户可以贡献ETH。
-* 如果任何人通过buy()执行带有价值的任意调用成功获取NFT，则成功。
+* 如果任何人通过`buy()`执行带有价值的任意调用成功获取NFT，则成功。
 * 如果在获取NFT之前到期时间过去，则失败。
 ### <font color="#5395ca">CollectionBuyCrowdfund</font>
 CollectionBuyCrowdfund是通过CrowdfundFactory合约中的createCollectionBuyCrowdfund()函数创建，主要参数如下：
