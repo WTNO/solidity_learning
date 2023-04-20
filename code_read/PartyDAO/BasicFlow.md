@@ -1,5 +1,10 @@
+# <font color="#5395ca">Overview</font>
+Party Protocol 提供了链上的功能，用于群体形成、协调和分配。Party Protocol 允许人们汇集资金以获取NFT，然后协同使用或作为群体出售这些NFT。该协议分为两个不同的阶段，按以下顺序进行：
+1. 众筹阶段：在此阶段，参与者汇集ETH以获取一个NFT。
+2. 治理阶段：在此阶段，参与者对一个NFT进行治理（通常是通过众筹获得的）。
+
 # <font color="#5395ca">start a party</font>
-创建自己的party时，需要选择自己想要参与的NFT，这个NFT通过名称、地址来搜索，或者粘贴来自OpenSea、Zora或Foundation的链接，根据你这一项输入的不同，会创建`BuyCrowdfund`、`CollectionBuyCrowdfund`、`AuctionCrowdfund`三种类型的众筹。
+创建自己的party时，需要选择自己想要参与的NFT，这个NFT通过名称、地址来搜索，或者粘贴来自OpenSea、Zora或Foundation的链接，根据你这一项输入的不同，会创建`BuyCrowdfund`、`CollectionBuyCrowdfund`、`AuctionCrowdfund`等多种类型的众筹。
 
 ## <font color="#5395ca">1. BuyCrowdfund</font>
 ### <font color="#5395ca">1.1 创建BuyCrowdfund</font>
@@ -50,7 +55,7 @@
 > `Crowdfund`中还实现了一个`contributeFor()`函数，用于代表另一个地址参与此众筹，与`contribute()`不同的地方在于前者使用参数`recipient`代替了后者代码中`msg.sender`的位置（仅限`contributeFor()`和`contribute()`，不包括这两个函数内部的调用）。
 
 ### <font color="#5395ca">1.2.1 过程</font>
-1. contributor不可被gateKeeper阻挡且当前众筹出于Active状态。
+1. contributor不可被gateKeeper阻挡且当前众筹处于Active状态。
 2. 捐款金额必须大于最低捐款额，小于最高捐款额。
 3. 统计当前众筹项目总捐款额。
 4. 记录该捐赠者的捐款记录条目，此条目包含本次捐款贡献的金额`amount`和之前的总捐款数`previousTotalContributions`,作用是在众筹结束后确定是否有未使用的捐款，合约会将`previousTotalContributions`与获取NFT所用的`totalEthUsed`进行比较。
@@ -64,10 +69,69 @@
 > 如果有人通过强制（自杀式攻击）将ETH强制转入合同中，我们不能使用 `address(this).balance - msg.value` 作为以前的总贡献。对于公开众筹来说，这并不是什么大问题，但是对于私人众筹（由门卫保护），可能会引起悲伤，因为它最终会导致产生未归属或无法认领的治理权，这意味着该Party将永远无法达成100％的共识。
 
 ## <font color="#5395ca">1.3 收购</font>
+### <font color="#5395ca">1.3.1 参数</font>
+收购功能由`BuyCrowdfund`中的`buy()`函数实现，主要功能是执行任意calldata以进行购买，如果成功购买NFT，则`创建一个派对`，参数如下：
+* `callTarget`：调用以购买NFT的目标合约。
+* `callValue`：与调用一起发送的ETH数量。
+* `callData`：要执行的calldata。
+* `governanceOpts`：如果购买成功，则用于初始化`Party`实例中的治理的选项。
+    * `address[] hosts`：初始party的host的地址。
+    * `uint40 voteDuration`：人们可以对提案进行投票的持续时间。
+    * `uint40 executionDelay`：在提案通过后等待多长时间才能执行。
+    * `uint16 passThresholdBps`：最小接受票比例，以考虑通过提案，以bps计，其中10000 == 100％。
+    * `uint16 feeBps`：治理分配的费用bps。
+    * `address payable feeRecipient`：治理分配的费用接收方。
+* `hostIndex`：如果调用者是Host，则这是调用者在`governanceOpts.hosts`数组中的索引。
+
+### <font color="#5395ca">1.3.2 执行流程</font>
+1. 根据成员变量`onlyHostCanBuy`的值校验调用`buy()`的人的身份，如果为`TRUE`，要求调用者为Party的Host，同时还会对比校验传入的`governanceOpts`与创建众筹时的治理选项的哈希；如果为`FALSE`，则要求调用者身份能通过预设的gateKeeper（如果存在的话），且必须为贡献者。
+2. 校验要求当前众筹的生命周期出于Active状态。
+3. 校验本次调用是否安全，包括是否有重入风险以及传入的callData参数不能调用IERC721的`approve`和`setApprovalForAll`函数，以防止将NFT从众筹中转移出去。
+4. 确认callValue低于maximumPrice，也就是购买价格不高于前面设置好的最多为NFT支付的金额。
+5. 购买NFT
+    ```java
+    (bool s, bytes memory r) = callTarget.call{ value: callValue }(callData);
+    ```
+6. 购买成功后会校验`totalEthUsed > totalContributions`，以防止未经核算的ETH用于操纵价格和创建“幽灵股份”，影响投票权。
+7. 如果购买NFT的花费大于0，围绕新购买的NFT<font color="00dddd">创建一个Party</font>并确定胜利，进入治理阶段。
+8. 如果所有NFT都是免费购买或全部赠送的，则通过确定损失来退还所有贡献者。
+
+至此，Party的众筹阶段就结束了，后续操作需要根据众筹结果来决定。
+
+## <font color="#5395ca">2. CollectionBuyCrowdfund</font>
+`CollectionBuyCrowdfund`和`BuyCrowdfund`一样都继承了`BuyCrowdfundBase`，也就是说两者只是在初始化和购买NFT两个流程上有一些细微区别。
+### <font color="#5395ca">2.1 初始化</font>
+初始化代码位于`CollectionBuyCrowdfund`合约的`initialize`函数中，与`BuyCrowdfund`的区别只在于参数不同，如下所示：
+* `CollectionBuyCrowdfundOptions opts`：
+    * `string name`：众筹名称
+    * `string symbol`：众筹和治理NFT的代币符号。
+    * `uint256 customizationPresetId`：用于众筹和治理NFT的自定义预设ID。
+    * `IERC721 nftContract`：被购买的NFT的ERC721合约。
+    * `uint40 duration`：众筹购买NFT的持续时间，以秒为单位。
+    * `uint96 maximumPrice`：众筹活动愿意支付的最高价格。
+    * `address payable splitRecipient`：当群体转变为治理时，将获得最终投票权的地址。
+    * `uint16 splitBps`：splitRecipient最终获得的最终权力总数的百分比（以bps为单位）。
+    * `address initialContributor`：如果在部署期间附加了ETH，则将其解释为贡献。这是谁获得该贡献的信用。
+    * `address initialDelegate`：如果有初始贡献，则在众筹转变为治理时，他们将委派其投票权的对象。
+    * `uint96 minContribution`：每个地址可以向此众筹活动贡献的最小ETH金额。
+    * `uint96 maxContribution`：每个地址可以向此众筹活动贡献的最大ETH金额。
+    * `IGateKeeper gateKeeper`：用于限制谁可以向此众筹活动贡献的门卫合约（如果非空）。
+    * `bytes12 gateKeeperId`：要使用的gateKeeper合约中的gate ID。
+    * `FixedGovernanceOpts governanceOpts`：如果众筹成功，治理 Party 将使用的固定治理选项（即无法更改）。
+* `bytes createGateCallData`：和`BuyCrowdfund`中的一致，不再赘述。
+
+通过对比`BuyCrowdfund`中的初始化参数，很显然本类型的众筹只少了`nftTokenId`和`onlyHostCanBuy`两个参数，这两个参数的关键在于：
+1. 本类型的众筹是购买指定ERC721合约中的任意NFT，而不是哪一个指定的NFT，具体买哪一个需要在购买时才决定。
+2. 本类型的众筹购买仅限Host调用。
+
+除了上面两个区别以外，本类型和`BuyCrowdfund`没有其他区别。
+## <font color="#5395ca">3. CollectionBatchBuyCrowdfund</font>
+从名称上可以看出，此众筹是批量购买指定ERC721合约中的NFT，在`CollectionBuyCrowdfund`的基础上多了一个`nftTokenIdsMerkleRoot`参数，这个参数是可购买的代币ID的默克尔根，如果为null，则可以购买集合中的任何代币ID。  
+`CollectionBatchBuyCrowdfund`和`CollectionBuyCrowdfund`的区别在于购买时可以批量购买，并且需要验证购买的代币ID是否在默克尔树中。
 ## <font color="#5395ca">1. BuyCrowdfund</font>
-## <font color="#5395ca">1. BuyCrowdfund</font>
-## <font color="#5395ca">1. BuyCrowdfund</font>
-## <font color="#5395ca">1. BuyCrowdfund</font>
-## <font color="#5395ca">1. BuyCrowdfund</font>
+
+
+
+
 
 
