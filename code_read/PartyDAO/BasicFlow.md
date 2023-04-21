@@ -128,7 +128,100 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
 ## <font color="#5395ca">3. CollectionBatchBuyCrowdfund</font>
 从名称上可以看出，此众筹是批量购买指定ERC721合约中的NFT，在`CollectionBuyCrowdfund`的基础上多了一个`nftTokenIdsMerkleRoot`参数，这个参数是可购买的代币ID的默克尔根，如果为null，则可以购买集合中的任何代币ID。  
 `CollectionBatchBuyCrowdfund`和`CollectionBuyCrowdfund`的区别在于购买时可以批量购买，并且需要验证购买的代币ID是否在默克尔树中。
-## <font color="#5395ca">1. BuyCrowdfund</font>
+
+## <font color="#5395ca">4. AuctionCrowdfund</font>
+本类型的众筹可以重复对特定NFT（即已知的代币ID）进行竞标，直到赢得拍卖。
+### <font color="#5395ca">4.1 初始化</font>
+#### <font color="#5395ca">4.1.1 参数</font>
+代码位于`AuctionCrowdfund`中的`initialize()`函数，参数如下：
+* `string name`：众筹的名称。
+* `string symbol`：众筹和治理NFT的代币符号。
+* `uint256 customizationPresetId`：用于众筹和治理NFT的自定义预设ID。
+* `uint256 auctionId`：拍卖ID（特定于IMarketWrapper）。
+* `IMarketWrapper market`：处理与拍卖市场的交互的IMarketWrapper合约。
+* `IERC721 nftContract`：被购买的NFT的ERC721合约。
+* `uint256 nftTokenId`：被购买的NFT的ID。
+* `uint40 duration`：众筹竞标NFT的时间限制，以秒为单位。
+* `uint96 maximumBid`：允许的最高竞标价。
+* `address payable splitRecipient`：当派对转换为治理时，接收最终投票权部分的地址
+* `uint16 splitBps`：splitRecipient收到的最终总投票权百分比（以bps为单位）。
+* `address initialContributor`：如果在部署期间附加了ETH，则将其解释为贡献。这是谁得到了这个贡献的信用。
+* `address initialDelegate`：如果有初始贡献，这是他们在众筹转换为治理时将委托投票权的人。
+* `uint96 minContribution`：每个人可以向此众筹贡献的最小ETH金额。
+* `uint96 maxContribution`：每个人可以向此众筹贡献的最大ETH金额。
+* `IGateKeeper gateKeeper`：门卫合约（如果不为空），用于限制谁可以向此众筹贡献（如果不为空）。如果使用，则只有贡献者或主持人可以调用`bid()`。
+* `bytes12 gateKeeperId`：要使用的gateKeeper合约中的gate ID。
+* `bool onlyHostCanBid`：派对是否只允许主持人调用`bid()`。
+* `FixedGovernanceOpts governanceOpts`：如果众筹成功，则将使用固定的治理选项（即无法更改）创建治理Party。
+
+#### <font color="#5395ca">4.1.2 过程</font>
+1. 如果部署者在部署过程中传入了一些ETH，则为其信用初始贡献。
+    ```java
+    if (initialContribution > 0) {
+        _setDelegate(opts.initialContributor, opts.initialDelegate);
+        // If this ETH is passed in, credit it to the `initialContributor`.
+        _contribute(opts.initialContributor, opts.initialDelegate, initialContribution, 0, "");
+    }
+    ```
+2. 设置gateKeeper需要在DAppp中开启Private Party选项，用于限制捐赠者资格（初始捐赠者始终可以进入），有三种类型：
+    * TOKEN GATED：捐赠者必须持有`指定ERC-20合约`的代币，且当前持有的代币数量不小于`指定值`，才能向Party贡献ETH。
+    * NFT GATED：捐赠者必须持有`指定ERC-721`的收藏品，且当前持有的此收藏品中的NFT数量不小于`指定值`，才能向Party贡献ETH。
+    * ALLOW LIST：直接指定可以向Party做出贡献的地址
+3. 检查拍卖是否可以竞标并且有效。
+4. 检查当前拍卖的最低出价是否小于本众筹的最高出价。
+ 
+### <font color="#5395ca">4.2 贡献（也就是参与众筹）</font>
+也是通过`Crowdfund`中的`contribute() payable`函数实现，和前面一样，不再赘述。
+
+### <font color="#5395ca">4.3 竞标</font>
+### <font color="#5395ca">4.3.1 参数</font>
+竞标操作的实现代码位于`AuctionCrowdfundBase`合约中，有如下三种实现函数：
+1. `bid()`：使用此众筹中的资金在NFT上竞标，将最小可能出价定为最高出价，最高不超过`maximumBid`。仅当`onlyHostCanBid`未启用时，才可由贡献者调用。
+2. `bid(FixedGovernanceOpts memory governanceOpts, uint256 hostIndex)`：使用此众筹中的资金在NFT上竞标，将最小可能出价定为最高出价，最高不超过`maximumBid`。
+   * `governanceOpts`：众筹创建时的治理选项。仅用于只有主机可以竞标的众筹，以验证调用者是否是主机。
+   * `hostIndex`：如果调用者是主机，则这是调用者在“governanceOpts.hosts”数组中的索引。仅用于只有主机可以竞标的众筹，以验证调用者是否是主机。
+3. `bid(uint96 amount,FixedGovernanceOpts memory governanceOpts,uint256 hostIndex)`：
+   * `amount`：竞标金额。
+   * `governanceOpts`：众筹创建时的治理选项。仅用于只有主机可以竞标的众筹，以验证调用者是否是主机。
+   * `hostIndex`：如果调用者是主机，则这是调用者在“governanceOpts.hosts”数组中的索引。仅用于只有主机可以竞标
+
+### <font color="#5395ca">4.3.2 过程</font>
+1. 检查拍卖是否仍然活跃。
+2. 将状态标记为Busy，以防止调用burn()、bid()和contribute()，因为这将导致CrowdfundLifecycle.Busy。
+3. 确保拍卖没有被最终确定。（通过参数`IMarketWrapper market`实现）
+4. 只有在我们不是当前最高出价者时才进行出价。
+5. 获取成为最高出价者所需的最低出价。
+   ```java
+    // 这里就是前两个竞拍函数和第三个给定竞拍价的函数的区别
+    if (amount == type(uint96).max) {
+        amount = market_.getMinimumBid(auctionId_).safeCastUint256ToUint96();
+    }
+   ```
+6. 防止未计入账户的 ETH 用于夸大出价并在投票权中创建“幽灵股份”。
+7. 确保出价低于本众筹允许的最高竞标价。
+8. 将竞拍价提交给市场合约。
+9. 将状态标记为Active。
+
+### <font color="#5395ca">4.4 竞标结束</font>
+代码实现位于`AuctionCrowdfund`合约中的`finalize`函数，如果我们竞标成功，将会索取NFT，并将创建治理方（Party）；如果输了，将恢复我们的出价。
+#### <font color="#5395ca">过程</font>
+1. 检查拍卖是否仍处于活动状态并且没有超过“expiry”时间。
+2. 如果拍卖尚未最终确定，则进行最终确定。
+   * 将状态标记为繁忙，以防止调用burn()、bid()和contribute()，因为这将导致CrowdfundLifecycle.Busy。
+   * 如果我们之前已经出价或CF没有过期，则结束拍卖。
+   * 如果众筹已过期且我们不是最高出价者，则跳过结束，因为没有赢得拍卖的机会。
+3. 确认现在是否拥有 NFT
+   * 如果持有NFT，且最后的竞拍价不为0，则围绕NFT创建治理方
+   * 否则，我们输掉了拍卖或 NFT 赠予了我们。清除`lastBid`，因此`_getFinalPrice()`为 0，人们可以在烧毁其参与 NFT时赎回其全部贡献。
+
+至此，本类型众筹竞拍结束，如果竞拍成功，则创建Party进入治理阶段。
+
+## <font color="#5395ca">3. RollingAuctionCrowdfund</font>
+本类型众筹和`AuctionCrowdfund`相似，其可以重复对特定市场（例如 Nouns）上特定收藏品的 NFT 进行出价，并可以`在赢得拍卖之前继续对新拍卖进行出价`。
+
+
+
+
 
 
 
