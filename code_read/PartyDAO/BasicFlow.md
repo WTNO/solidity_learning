@@ -212,12 +212,32 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
    * 如果众筹已过期且我们不是最高出价者，则跳过结束，因为没有赢得拍卖的机会。
 3. 确认现在是否拥有 NFT
    * 如果持有NFT，且最后的竞拍价不为0，则围绕NFT创建治理方
-   * 否则，我们输掉了拍卖或 NFT 赠予了我们。清除`lastBid`，因此`_getFinalPrice()`为 0，人们可以在烧毁其参与 NFT时赎回其全部贡献。
+   * 否则，我们输掉了拍卖或 NFT 赠予了我们。清除`lastBid`，因此`_getFinalPrice()`为 0，人们可以在烧毁其参与 NFT时赎回其全部捐赠。
 
 至此，本类型众筹竞拍结束，如果竞拍成功，则创建Party进入治理阶段。
 
-## <font color="#5395ca">3. RollingAuctionCrowdfund</font>
+## <font color="#5395ca">5. RollingAuctionCrowdfund</font>
 本类型众筹和`AuctionCrowdfund`相似，其可以重复对特定市场（例如 Nouns）上特定收藏品的 NFT 进行出价，并可以`在赢得拍卖之前继续对新拍卖进行出价`。
+和`AuctionCrowdfund`相比，`RollingAuctionCrowdfund`只有竞标结束的实现不同。
+## <font color="#5395ca">竞标结束</font>
+具体实现位于`RollingAuctionCrowdfund`合约的`finalize(FixedGovernanceOpts memory governanceOpts)`函数，流程如下：
+1. 检查拍卖是否仍处于活动状态并且未超过 expiry 时间。
+2. 如果拍卖尚未最终确定，则进行最终确定。
+   * 将状态标记为繁忙，以防止调用burn()、bid()和contribute()，因为这将导致CrowdfundLifecycle.Busy。
+   * 如果我们之前已经出价或CF没有过期，则结束拍卖。
+   * 如果众筹已过期且我们不是最高出价者，则跳过结束，因为没有赢得拍卖的机会。
+3. 确认现在是否拥有 NFT
+   * 如果持有NFT，且最后的竞拍价不为0，则围绕NFT创建治理方
+   * 如果当前众筹生命周期为`Expired`，清除`lastBid`，因此`_getFinalPrice()`为 0，人们可以在销毁其参与NFT时赎回其全部捐赠。
+   * 最后一种情况是如果这个拍卖失败了（或者在极少数情况下，如果 NFT 免费获得并且资金仍未使用），则继续进行下一个拍卖。
+
+## <font color="#5395ca">6. 其他操作</font>
+### <font color="#5395ca">6.1 burn</font>
+流程：
+1. 执行此操作要求众筹赢得了拍卖，并且必须已经创建了一个Party。
+2. 
+### <font color="#5395ca">6.2 claim</font>
+
 
 
 
