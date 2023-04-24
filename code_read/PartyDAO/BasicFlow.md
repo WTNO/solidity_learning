@@ -274,13 +274,23 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
 * `ProposalExecutionEngine`：可升级的逻辑（和一些状态）合约，用于从Party上下文执行每种提案类型。
 * `TokenDistributor`：托管分配存入的ETH和ERC20代币给Party成员的托管合约。
 * `Globals`：一个定义全局配置值的合约，被整个协议中的其他合约引用。
-## <font color="#5395ca">创建Party</font>
+
+## <font color="#5395ca">1. 创建Party</font>
+## <font color="#5395ca">1.1 参数</font>
 当众筹成功获得NFT并且花费大于0时，会围绕获得的NFT创建一个Party，具体实现是由位于`Crowdfund`中的`_createParty()`函数调用`PartyFactory`来创建，参数如下：
-* `address authority`：可以调用mint()函数的地址，也就是众筹合约
+* `address authority`：是可以在创建的Party上铸造代币的地址。在典型的流程中，众筹合约将把它设置为自己。
 * `Party.PartyOptions memory opts`：用于初始化Party的选项。这些选项是固定的，不能在后期更改，也就是前文中的治理选项。
-* `IERC721[] memory preciousTokens`：
-前文中被众筹购买的NFT的ERC721合同。这些是受保护的资产，并且与其他资产相比，在提案中受到额外的限制。
-* `uint256[] memory preciousTokenIds`：preciousTokens中每个NFT对应的ID。
+* `IERC721[] memory preciousTokens`和`uint256[] memory preciousTokenIds`：共同定义了Party将保管的NFT，并强制执行额外的限制，以便它们不会轻易转出Party。此列表在Party创建后无法更改。请注意，此列表从未存储在链上（仅存储哈希值），在执行提案时需要将其传递到execute()调用中。
+  
+> Party是通过PartyFactory合约创建的。通常情况下，这是由众筹实例自动完成的，但直接与PartyFactory合约进行交互也是一个有效的用例，例如，围绕您已经拥有的NFT组建治理Party。
+
+## <font color="#5395ca">1.2 流程</font>
+1. 部署一个新的Proxy实例，其实现指向Globals合约中由GLOBAL_PARTY_IMPL键定义的Party合约。
+2. 将资产转移到创建的Party中，通常是Precious NFT。
+3. 作为authority，通过调用Party.mint()向Party成员铸造治理NFT。
+   * 在典型的流程中，当贡献者销毁其贡献NFT时，众筹合约将调用此函数。
+4. 可选地，作为authority，调用Party.abdicate()来撤销铸造特权，一旦所有Governance NFT都被铸造。
+5. 在Party创建后的任何步骤中，具有治理NFT的成员都可以执行治理操作，尽管在投票权的总供应量尚未被铸造或分配的情况下，他们可能无法达成共识。
 
 
 
