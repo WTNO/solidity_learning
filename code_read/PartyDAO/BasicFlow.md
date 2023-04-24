@@ -3,7 +3,7 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
 1. 众筹阶段：在此阶段，参与者汇集ETH以获取一个NFT。
 2. 治理阶段：在此阶段，参与者对一个NFT进行治理（通常是通过众筹获得的）。
 
-# <font color="#5395ca">start a party</font>
+# <font color="#5395ca">众筹阶段</font>
 创建自己的party时，需要选择自己想要参与的NFT，这个NFT通过名称、地址来搜索，或者粘贴来自OpenSea、Zora或Foundation的链接，根据你这一项输入的不同，会创建`BuyCrowdfund`、`CollectionBuyCrowdfund`、`AuctionCrowdfund`等多种类型的众筹。
 
 ## <font color="#5395ca">1. BuyCrowdfund</font>
@@ -203,7 +203,7 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
 9. 将状态标记为Active。
 
 ### <font color="#5395ca">4.4 竞标结束</font>
-代码实现位于`AuctionCrowdfund`合约中的`finalize`函数，如果我们竞标成功，将会索取NFT，并将创建治理方（Party）；如果输了，将恢复我们的出价。
+代码实现位于`AuctionCrowdfund`合约中的`finalize`函数，如果我们竞标成功，将会索取NFT，并将创建治理NFT（Party）；如果输了，将恢复我们的出价。
 #### <font color="#5395ca">过程</font>
 1. 检查拍卖是否仍处于活动状态并且没有超过“expiry”时间。
 2. 如果拍卖尚未最终确定，则进行最终确定。
@@ -211,7 +211,7 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
    * 如果我们之前已经出价或CF没有过期，则结束拍卖。
    * 如果众筹已过期且我们不是最高出价者，则跳过结束，因为没有赢得拍卖的机会。
 3. 确认现在是否拥有 NFT
-   * 如果持有NFT，且最后的竞拍价不为0，则围绕NFT创建治理方
+   * 如果持有NFT，且最后的竞拍价不为0，则围绕NFT创建治理NFT——Party。
    * 否则，我们输掉了拍卖或 NFT 赠予了我们。清除`lastBid`，因此`_getFinalPrice()`为 0，人们可以在烧毁其参与 NFT时赎回其全部捐赠。
 
 至此，本类型众筹竞拍结束，如果竞拍成功，则创建Party进入治理阶段。
@@ -227,16 +227,60 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
    * 如果我们之前已经出价或CF没有过期，则结束拍卖。
    * 如果众筹已过期且我们不是最高出价者，则跳过结束，因为没有赢得拍卖的机会。
 3. 确认现在是否拥有 NFT
-   * 如果持有NFT，且最后的竞拍价不为0，则围绕NFT创建治理方
+   * 如果持有NFT，且最后的竞拍价不为0，则围绕NFT创建治理NFT——Party。
    * 如果当前众筹生命周期为`Expired`，清除`lastBid`，因此`_getFinalPrice()`为 0，人们可以在销毁其参与NFT时赎回其全部捐赠。
    * 最后一种情况是如果这个拍卖失败了（或者在极少数情况下，如果 NFT 免费获得并且资金仍未使用），则继续进行下一个拍卖。
 
 ## <font color="#5395ca">6. 其他操作</font>
-### <font color="#5395ca">6.1 burn</font>
+### <font color="#5395ca">6.1 burn(address payable contributor)</font>
+销毁参与者的 NFT，可能会铸造投票权或退还未使用的 ETH 给贡献者。无论他们是否是贡献者，都可以将贡献者作为`splitRecipient`。任何人都可以代表贡献者调用此功能，在治理阶段解锁他们的投票权，确保代表们（`delegates`）获得他们的投票权并且治理不会停滞。
 流程：
 1. 执行此操作要求众筹赢得了拍卖，并且必须已经创建了一个Party。
-2. 
-### <font color="#5395ca">6.2 claim</font>
+2. 如果`contributor`依然存在，也就是说这个`contributor`贡献过且NFT还没销毁，则允许销毁NFT。
+3. 计算`contributor`贡献的ETH中`已使用`和`未使用`两部分的金额，并根据两者计算`contributor`在治理阶段将拥有的投票权重。
+```java
+    votingPower = ((1e4 - splitBps_) * ethUsed) / 1e4;
+    if (splitRecipient_ == contributor) {
+        // Split recipient is also the contributor so just add the split
+        // voting power.
+        votingPower += (splitBps_ * totalEthUsed + (1e4 - 1)) / 1e4; // roundup
+    }
+```
+4. 获取委派投票权的地址。如果为 null，则委派给自己。
+5. 为贡献者铸造治理NFT（注意区别与前面的众筹NFT），如果铸造失败，则将其铸造到众筹本身并托管给贡献者，以便以后`claim`索取。
+6. 将应返还给贡献者的未使用ETH进行退款。如果转账失败，贡献者仍然可以通过后续操作`claim`从众筹中索取资金。
+
+### <font color="#5395ca">6.2 claim(address payable receiver)</font>
+此操作用于索取应返还的治理NFT或退款，但由于`_burn()`中的错误（例如，未实现 `onERC721Received()`或无法接收ETH的合约），无法提供。只有在使用 `burn()`无法返回退款和治理NFT铸造时才调用此函数。流程：
+1. 本函数需要由贡献者调用，因此通过msg.sender来获取治理NFT和退款信息。
+2. 如果`claimInfo.refund`不为0，则从当前合约转账ETH到`receiver`。
+3. 如果`claimInfo.governanceTokenId`不为0，则将治理NFT从当前合约转移至`receiver`。
+
+# <font color="#5395ca">治理阶段</font>
+在众筹获得其NFT之后，它会创建一个新的治理NFT——Party，并将NFT转移至该Party。贡献者将在新Party中被铸造为NFT成员，其投资额将对应于其在众筹中的贡献，从而获得相应的投票权。投票权可用于投票支持提案，提案包含Party可执行的可能行动。在此阶段需要了解的主要概念有：
+* `Precious`：一组ERC-721代币，由治理合约（Party）保管，通常在众筹阶段获得。这些是受保护的资产，与其他资产相比，在提案中受到额外限制。
+* `Governance NFT`：代表在治理Party中具有投票权的会员身份的NFT（ERC721）。
+* `Party`：治理合约本身，它保管Precious，跟踪投票权，管理提案的生命周期，并同时是Governance NFT的代币合约。
+* `Proposals（提案）`：Party将执行的链上操作，必须按照整个治理生命周期的进展才能执行。
+* `Distributions`：一种（非受控）机制，通过该机制，各方可以按其相对投票权（Governance NFT）比例向Party持有的ETH和ERC-20代币分配。
+* `Party Hosts`：可以单方面否决Party中提案的预定义帐户。通常在创建众筹时定义。
+* `Globals`：一个单一的合约，保存了配置值，由多个生态系统合约引用。
+* `Proxies`：所有Party实例都部署为简单的代理合约，将调用转发给Party实现合约。
+* `ProposalExecutionEngine`：一个可升级的合约，Party合约将delegatecall到该合约中，该合约实现执行特定提案类型的逻辑。
+
+涉及的主要合约有：
+* `PartyFactory`：创建新的代理Party实例。
+* `Party`：治理合约，也保管Precious NFT。这也是Governance NFT的ERC-721合约。
+* `ProposalExecutionEngine`：可升级的逻辑（和一些状态）合约，用于从Party上下文执行每种提案类型。
+* `TokenDistributor`：托管分配存入的ETH和ERC20代币给Party成员的托管合约。
+* `Globals`：一个定义全局配置值的合约，被整个协议中的其他合约引用。
+## <font color="#5395ca">创建Party</font>
+当众筹成功获得NFT并且花费大于0时，会围绕获得的NFT创建一个Party，具体实现是由位于`Crowdfund`中的`_createParty()`函数调用`PartyFactory`来创建，参数如下：
+* `address authority`：可以调用mint()函数的地址，也就是众筹合约
+* `Party.PartyOptions memory opts`：用于初始化Party的选项。这些选项是固定的，不能在后期更改，也就是前文中的治理选项。
+* `IERC721[] memory preciousTokens`：
+前文中被众筹购买的NFT的ERC721合同。这些是受保护的资产，并且与其他资产相比，在提案中受到额外的限制。
+* `uint256[] memory preciousTokenIds`：preciousTokens中每个NFT对应的ID。
 
 
 
