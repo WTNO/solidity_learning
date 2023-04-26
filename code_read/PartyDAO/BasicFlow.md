@@ -280,6 +280,17 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
 当众筹成功获得NFT并且花费大于0时，会围绕获得的NFT创建一个Party，具体实现是由位于`Crowdfund`中的`_createParty()`函数调用`PartyFactory`来创建，参数如下：
 * `address authority`：是可以在创建的Party上铸造代币的地址。在典型的流程中，众筹合约将把它设置为自己。
 * `Party.PartyOptions memory opts`：用于初始化Party的选项。这些选项是固定的，不能在后期更改，也就是前文中的治理选项。
+  * `string name`：Party名称。
+  * `string symbol`：治理NFT的代币符号。
+  * `uint256 customizationPresetId`：治理NFT的自定义预设ID。
+  * `PartyGovernance.GovernanceOpts governance`：
+    * `hosts`：初始党派主机的数组。这是唯一可以更改的配置，因为主机可以将其特权转让给其他帐户。
+    * `voteDuration`：在提出提案后，成员可以投票的持续时间（以秒为单位），以使其通过。如果在提案通过之前此窗口过期，则将被视为失败。
+    * `executionDelay`：提案通过后必须等待的时间（以秒为单位），然后才能执行。这给了主机时间否决已通过的恶意提案。
+    * `passThresholdBps`：考虑通过提案所需的最小投票比例与totalVotingPower供应的比率。这是以基点表示的，即100 = 1％。
+    * `totalVotingPower`：党派的总投票权。这应该是授予成员的所有（可能的）治理NFT的权重之和。请注意，该假设没有任何地方得到强制执行，因为可能有用于铸造超过100％的选票的用例，但是众筹合同中的逻辑不能铸造超过totalVotingPower。
+    * `feeBps`：从该党派的分配中收取的费用，以保留给feeRecipient索取。通常，这将设置为由PartyDAO控制的地址。
+    * `feeRecipient`：可以为该党派索取分配费用的地址。
 * `IERC721[] memory preciousTokens`和`uint256[] memory preciousTokenIds`：共同定义了Party将保管的NFT，并强制执行额外的限制，以便它们不会轻易转出Party。此列表在Party创建后无法更改。请注意，此列表从未存储在链上（仅存储哈希值），在执行提案时需要将其传递到execute()调用中。
   
 > Party是通过PartyFactory合约创建的。通常情况下，这是由众筹实例自动完成的，但直接与PartyFactory合约进行交互也是一个有效的用例，例如，围绕您已经拥有的NFT组建治理Party。
