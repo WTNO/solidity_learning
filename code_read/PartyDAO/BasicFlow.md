@@ -83,7 +83,7 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
     * `address payable feeRecipient`：治理分配的费用接收方。
 * `hostIndex`：如果调用者是Host，则这是调用者在`governanceOpts.hosts`数组中的索引。
 
-### <font color="#5395ca">1.3.2 执行流程</font>
+### <font color="#5395ca">1.3.2 过程</font>
 1. 根据成员变量`onlyHostCanBuy`的值校验调用`buy()`的人的身份，如果为`TRUE`，要求调用者为Party的Host，同时还会对比校验传入的`governanceOpts`与创建众筹时的治理选项的哈希；如果为`FALSE`，则要求调用者身份能通过预设的gateKeeper（如果存在的话），且必须为贡献者。
 2. 校验要求当前众筹的生命周期出于Active状态。
 3. 校验本次调用是否安全，包括是否有重入风险以及传入的callData参数不能调用IERC721的`approve`和`setApprovalForAll`函数，以防止将NFT从众筹中转移出去。
@@ -178,12 +178,12 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
 竞标操作的实现代码位于`AuctionCrowdfundBase`合约中，有如下三种实现函数：
 1. `bid()`：使用此众筹中的资金在NFT上竞标，将最小可能出价定为最高出价，最高不超过`maximumBid`。仅当`onlyHostCanBid`未启用时，才可由贡献者调用。
 2. `bid(FixedGovernanceOpts memory governanceOpts, uint256 hostIndex)`：使用此众筹中的资金在NFT上竞标，将最小可能出价定为最高出价，最高不超过`maximumBid`。
-   * `governanceOpts`：众筹创建时的治理选项。仅用于只有主机可以竞标的众筹，以验证调用者是否是主机。
-   * `hostIndex`：如果调用者是主机，则这是调用者在“governanceOpts.hosts”数组中的索引。仅用于只有主机可以竞标的众筹，以验证调用者是否是主机。
+   * `governanceOpts`：众筹创建时的治理选项。仅用于只有Host可以竞标的众筹，以验证调用者是否是Host。
+   * `hostIndex`：如果调用者是Host，则这是调用者在“governanceOpts.hosts”数组中的索引。仅用于只有Host可以竞标的众筹，以验证调用者是否是Host。
 3. `bid(uint96 amount,FixedGovernanceOpts memory governanceOpts,uint256 hostIndex)`：
    * `amount`：竞标金额。
-   * `governanceOpts`：众筹创建时的治理选项。仅用于只有主机可以竞标的众筹，以验证调用者是否是主机。
-   * `hostIndex`：如果调用者是主机，则这是调用者在“governanceOpts.hosts”数组中的索引。仅用于只有主机可以竞标
+   * `governanceOpts`：众筹创建时的治理选项。仅用于只有Host可以竞标的众筹，以验证调用者是否是Host。
+   * `hostIndex`：如果调用者是Host，则这是调用者在“governanceOpts.hosts”数组中的索引。仅用于只有Host可以竞标
 
 ### <font color="#5395ca">4.3.2 过程</font>
 1. 检查拍卖是否仍然活跃。
@@ -276,7 +276,7 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
 * `Globals`：一个定义全局配置值的合约，被整个协议中的其他合约引用。
 
 ## <font color="#5395ca">1. 创建Party</font>
-## <font color="#5395ca">1.1 参数</font>
+### <font color="#5395ca">1.1 参数</font>
 当众筹成功获得NFT并且花费大于0时，会围绕获得的NFT创建一个Party，具体实现是由位于`Crowdfund`中的`_createParty()`函数调用`PartyFactory`来创建，参数如下：
 * `address authority`：是可以在创建的Party上铸造代币的地址。在典型的流程中，众筹合约将把它设置为自己。
 * `Party.PartyOptions memory opts`：用于初始化Party的选项。这些选项是固定的，不能在后期更改，也就是前文中的治理选项。
@@ -284,18 +284,18 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
   * `string symbol`：治理NFT的代币符号。
   * `uint256 customizationPresetId`：治理NFT的自定义预设ID。
   * `PartyGovernance.GovernanceOpts governance`：
-    * `hosts`：初始党派主机的数组。这是唯一可以更改的配置，因为主机可以将其特权转让给其他帐户。
+    * `hosts`：初始Party Host的数组。这是唯一可以更改的配置，因为Host可以将其特权转让给其他帐户。
     * `voteDuration`：在提出提案后，成员可以投票的持续时间（以秒为单位），以使其通过。如果在提案通过之前此窗口过期，则将被视为失败。
-    * `executionDelay`：提案通过后必须等待的时间（以秒为单位），然后才能执行。这给了主机时间否决已通过的恶意提案。
+    * `executionDelay`：提案通过后必须等待的时间（以秒为单位），然后才能执行。这给了Host时间否决已通过的恶意提案。
     * `passThresholdBps`：考虑通过提案所需的最小投票比例与totalVotingPower供应的比率。这是以基点表示的，即100 = 1％。
-    * `totalVotingPower`：党派的总投票权。这应该是授予成员的所有（可能的）治理NFT的权重之和。请注意，该假设没有任何地方得到强制执行，因为可能有用于铸造超过100％的选票的用例，但是众筹合同中的逻辑不能铸造超过totalVotingPower。
-    * `feeBps`：从该党派的分配中收取的费用，以保留给feeRecipient索取。通常，这将设置为由PartyDAO控制的地址。
-    * `feeRecipient`：可以为该党派索取分配费用的地址。
+    * `totalVotingPower`：Party的总投票权。这应该是授予成员的所有（可能的）治理NFT的权重之和。请注意，该假设没有任何地方得到强制执行，因为可能有用于铸造超过100％的选票的用例，但是众筹合同中的逻辑不能铸造超过totalVotingPower。
+    * `feeBps`：从该Party的分配中收取的费用，以保留给feeRecipient索取。通常，这将设置为由PartyDAO控制的地址。
+    * `feeRecipient`：可以为该Party索取分配费用的地址。
 * `IERC721[] memory preciousTokens`和`uint256[] memory preciousTokenIds`：共同定义了Party将保管的NFT，并强制执行额外的限制，以便它们不会轻易转出Party。此列表在Party创建后无法更改。请注意，此列表从未存储在链上（仅存储哈希值），在执行提案时需要将其传递到execute()调用中。
   
 > Party是通过PartyFactory合约创建的。通常情况下，这是由众筹实例自动完成的，但直接与PartyFactory合约进行交互也是一个有效的用例，例如，围绕您已经拥有的NFT组建治理Party。
 
-## <font color="#5395ca">1.2 流程</font>
+### <font color="#5395ca">1.2 过程</font>
 1. 部署一个新的Proxy实例，其实现指向Globals合约中由GLOBAL_PARTY_IMPL键定义的Party合约。
 2. 将资产转移到创建的Party中，通常是Precious NFT。
 3. 作为authority，通过调用Party.mint()向Party成员铸造治理NFT。
@@ -303,7 +303,36 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
 4. 可选地，作为authority，调用Party.abdicate()来撤销铸造特权，一旦所有Governance NFT都被铸造。
 5. 在Party创建后的任何步骤中，具有治理NFT的成员都可以执行治理操作，尽管在投票权的总供应量尚未被铸造或分配的情况下，他们可能无法达成共识。
 
+## <font color="#5395ca">2. 提出提案</font>
+只能活跃成员（具有投票权）才能调用此功能。一旦准备就绪，任何成员或代表（具有非零有效投票权的人）都可以使用提案属性调用`propose()`，这将分配一个唯一的非零提案ID，并将提案置于投票状态。创建提案还将自动为提出人投票。随后，成员可以通过`accept()`来支持它，Party的主持人可以通过`veto()`单方面拒绝该提案。
 
+### <font color="#5395ca">2.1 入口与参数</font>
+本功能实现位于`PartyGovernance`合约中的`propose()`函数，参数如下：
+* `Proposal memory proposal`：提案的详细信息
+  * `uint40 maxExecutableTime`：提案无法再执行的时间，如果提案已执行，并且仍处于InProgress状态，则忽略此值。
+  * `uint40 cancelDelay`：提案可以保持InProgress状态的最短时间（以秒为单位），在此之前无法取消。
+  * `bytes proposalData`：编码的提案数据。前4个字节是提案类型，后面是特定于提案类型的编码提案参数。
+* `uint256 latestSnapIndex`：在提案创建之前，调用者最近的投票权快照的索引，应该在链外检索并传递。
+
+> 提案数据应该被添加前缀（像函数调用一样），使用4字节的`IProposalExecutionEngine.ProposalType`值作为开头，后面跟着特定于该提案类型的ABI编码数据（请参见[提案类型](https://github.com/PartyDAO/party-protocol/blob/main/docs/governance.md#arbitrarycalls-proposal-type)），例如，`abi.encodeWithSelector(bytes4(ProposalType.ListOnZoraProposal)`, `abi.encode(ZoraProposalData(...)))`。
+
+> 提案状态  
+> `Invalid`：提案不存在。  
+> `Voting(投票中)`：提案已经被提出（通过`propose()`），没有被Party主持人否决，并且在投票窗口内。成员可以对提案进行投票，Party主持人可以否决提案。  
+> `Defeated(失败)`：提案要么超过了投票窗口而没有达到通过阈值（passThresholdBps）的投票，要么被Party主持人否决。  
+> `Passed(已通过)`：提案已经达到至少通过阈值（passThresholdBps）的投票，但仍需等待执行延迟（executionDelay）过去才能执行。此时成员可以继续对提案进行投票，Party主持人可以否决提案。  
+> `Ready(准备就绪)`：与已通过相同，但此时已经满足执行延迟（executionDelay）或提案已经一致通过。任何成员都可以通过`execute()`执行提案，除非已经到达maxExecutableTime。  
+> `InProgress(进行中)`：提案已经执行至少一次，但还有进一步步骤需要完成，因此需要再次执行。在提案处于进行中状态时，不允许执行其他提案，因此只能有一个提案处于进行中状态。不允许对进行中的提案进行投票或否决，但如果cancelDelay已到达，则可以通过`cancel()`强制取消。  
+> `Complete(已完成)`：提案已经执行并完成了所有步骤。不允许进行投票或否决，也不能取消或再次执行。  
+> `Cancelled(已取消)`：提案已经执行至少一次，但在第一次执行后cancelDelay秒内未能完成并被强制取消。  
+
+### <font color="#5395ca">2.2 过程</font>
+1. 存储创建提案的时间和提案哈希值到成员变量`_proposalStateByProposalId`。
+2. 自动为提出人投票。
+
+> 需要注意的一点是，提案属性（除了提案ID）中没有一个会被存储在链上。相反，只有这些字段的哈希值（由提案ID作为键）被存储在链上，以优化gas使用，并强制这些属性在生命周期操作之间不会更改。
+
+## <font color="#5395ca">3. 对提案进行投票</font>
 
 
 
