@@ -349,6 +349,12 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
 4. 增加此提案上的已投票总数。
 5. 如果提案达到通过阈值，则更新提案状态为`Passed`。
 
+## <font color="#5395ca">3. 否决权</font>
+在提案的Voting、Passed和Ready阶段，Party Host可以通过调用`Party.veto()`单方面否决该提案，立即将提案置于Defeated状态。此时，无法对提案采取进一步行动。  
 
+否决权背后的理念是，如果Party中的投票权被过度集中，以至于恶意行为者可以通过恶意提案，Party Host可以作为最后的防线。另一方面，Party Host也可以通过否决每个合法提案来拖延Party的进展，因此Party需要非常小心地选择他们的Host。
 
-
+### <font color="#5395ca">说明</font>
+本功能实现位于`PartyGovernance`合约中的`vote()`函数，只有`proposalId`一个参数，执行过程如下：
+1. 要求当前提案状态是否为Voting、Passed、Ready中的一种。
+2. 将 votes 设置为 -1 表示否决（也就是`type(uint96).max`）。
