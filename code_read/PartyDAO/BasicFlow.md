@@ -335,7 +335,7 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
 ## <font color="#5395ca">3. 对提案进行投票</font>
 任何处于Voting、Passed或Ready状态的提案都可以通过`Party.accept()`由成员和代表进行投票。`accept()`函数会在提案创建时投出调用者的总有效投票权。一旦为提案投票的总投票权达到或超过通过阈值比例`passThresholdBps` ，提案将进入通过状态。
 
-成员可以继续投票，甚至超过通过状态，以实现一致投票，这将使提案绕过`executionDelay`，并为某些提案类型解锁特定行为。当总投票权的99.99%被投票给提案时，满足一致投票条件。我们不检查100%是因为在众筹期间可能存在舍入误差。
+成员可以继续投票，甚至超过通过状态，以实现一致投票，这将使提案绕过`executionDelay`，并为某些提案类型解锁特定行为。当总投票权的`99.99%`被投票给提案时，满足一致投票条件,不检查100%是因为在众筹期间可能存在舍入误差。
 
 ### <font color="#5395ca">3.1 入口与参数</font>
 本功能实现位于`PartyGovernance`合约中的`accept()`函数，参数如下：
@@ -358,3 +358,52 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
 本功能实现位于`PartyGovernance`合约中的`vote()`函数，只有`proposalId`一个参数，执行过程如下：
 1. 要求当前提案状态是否为Voting、Passed、Ready中的一种。
 2. 将 votes 设置为 -1 表示否决（也就是`type(uint96).max`）。
+
+## <font color="#5395ca">4. 执行提案</font>
+当一个提案获得足够的票数通过且执行延迟窗口已经过期，或者如果该提案达成了一致意见，任何具有当前非零有效投票权的成员都可以执行该提案。这是通过Party.execute()函数实现的。  
+如果发生以下情况，调用execute()将失败：
+* 该提案已经被执行并完成（处于Complete状态）。
+* 该提案尚未被执行，但其maxExecutableTime已过。
+* 该提案的执行失败。
+* 存在另一个已被执行但未完成（还有更多步骤）的提案。
+* 如果该提案是原子性的，即为单步提案，则立即进入完成状态。
+  
+### <font color="#5395ca">4.1 入口与参数</font>
+本功能实现位于`PartyGovernance`合约中的`execute()`函数，参数如下
+* `uint256 proposalId`：要执行的提案的ID。
+* `Proposal memory proposal`：提案的详细信息。
+* `IERC721[] memory preciousTokens`和`uint256[] memory preciousTokenIds`：共同定义了Party保管的NFT。
+* `bytes calldata progressData`：上一次execute()调用返回的数据（如果有）。
+* `bytes calldata extraDat`：提案可能需要执行步骤的链下数据。
+
+### <font color="#5395ca">4.1 过程</font>
+1. 获取关于提案的信息。
+2. 要求提案当前状态必须是`Ready`或者`InProgress`。
+3. 如果提案状态是`Ready`，也就是说提案尚未执行，则要求它没有过期。请注意，已经执行但仍有更多步骤的提案会忽略maxExecutableTime。
+4. 检查先前的列表是否有效。
+5. 预先将提案设置为已完成，以避免在更深层的调用中再次执行它。
+6. 执行提案：
+    * 设置提案执行引擎的参数。 
+    * 在提案执行后获取返回的进度数据。
+    * 如果返回的进度数据为空，则提案已完成，不应再次执行,返回`true`。
+7. 如果上一步返回的是`false`，则将第五步预设的已完成状态清零。
+
+> 多步骤提案
+>
+> 有些提案类型需要完成多个步骤和交易。例如，`ListOnZoraProposal`类型的提案。此提案将首先将一个NFT作为拍卖品列在Zora上，然后如果拍卖在一定时间内没有获得任何竞标或者完成后有获胜出价，Party将需要取消或完成该拍卖。为了完成这个过程，提案必须多次执行，直到被认为是完成的，并可以进入`Complete`状态。  
+> 
+> 通常，在多步骤提案中，需要在步骤之间记住一些状态。例如，`ListOnZoraProposal`类型将需要记住它创建的Zora拍卖的ID，以便在最后一步取消或完成它。与其在链上存储这些（可能复杂的）数据，执行提案将发出一个带有任意字节的`nextProgressData`参数的`ProposalExecuted`事件，该参数应在下一次调用`execute()`时传递，以推进提案。Party只会存储`nextProgressData`的哈希，并确认其与传入的哈希匹配。该数据包含推进提案到下一步所需的任何编码状态。  
+> 
+> 一旦提案执行了最后一步，它将在ProposalExecuted事件中发出一个空的nextProgressData。
+
+
+
+
+
+
+
+
+
+
+
+
