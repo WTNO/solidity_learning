@@ -369,14 +369,14 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
 * 如果该提案是原子性的，即为单步提案，则立即进入完成状态。
   
 ### <font color="#5395ca">4.1 入口与参数</font>
-本功能实现位于`PartyGovernance`合约中的`execute()`函数，参数如下
+本功能实现位于`PartyGovernance`合约中的`execute()`函数，参数如下：
 * `uint256 proposalId`：要执行的提案的ID。
 * `Proposal memory proposal`：提案的详细信息。
 * `IERC721[] memory preciousTokens`和`uint256[] memory preciousTokenIds`：共同定义了Party保管的NFT。
 * `bytes calldata progressData`：上一次execute()调用返回的数据（如果有）。
 * `bytes calldata extraDat`：提案可能需要执行步骤的链下数据。
 
-### <font color="#5395ca">4.1 过程</font>
+### <font color="#5395ca">4.2 过程</font>
 1. 获取关于提案的信息。
 2. 要求提案当前状态必须是`Ready`或者`InProgress`。
 3. 如果提案状态是`Ready`，也就是说提案尚未执行，则要求它没有过期。请注意，已经执行但仍有更多步骤的提案会忽略maxExecutableTime。
@@ -396,9 +396,24 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
 > 
 > 一旦提案执行了最后一步，它将在ProposalExecuted事件中发出一个空的nextProgressData。
 
+## <font color="#5395ca">5. 取消提案</font>
+多步骤提案存在无法完成的风险，因为它们可能会继续回滚。如果一个提案处于`InProgress`状态，则无法执行其他提案，因此Party可能会永久卡住，无法执行任何其他提案。为了防止这种情况发生，提案具有cancelDelay属性。在提案处于InProgress状态超过一定时间后，可以通过调用`cancel()`将其强制进入Complete状态。还有一个全局（在Globals合约中定义）的配置值（GLOBAL_PROPOSAL_MAX_CANCEL_DURATION），将cancelDelay限制为不太久的未来持续时间。
 
+取消提案应该被视为最后的手段，因为它可能会让Party处于破碎的状态（例如，资产被卡在另一个协议中），因为提案无法适当地清理自己。因此，Party应该小心，不要传递具有太短的`cancelDelay`的提案，除非他们完全信任所有其他成员。
 
+### <font color="#5395ca">5.1 入口与参数</font>
+本功能实现位于`PartyGovernance`合约中的`cancel()`函数，参数如下：
+`uint256 proposalId`：要取消的提案的ID。
+`Proposal calldata proposal`：要取消的提案的细节。
 
+### <font color="#5395ca">5.1 过程</font>
+1. 获取有关提案的信息。
+2. 提案详情必须与`propose()`中保持一致。
+3. 要求提案必须处于`InProgress`状态。
+4. 将`cancelDelay`限制在全局最大和最小取消延迟之间，以减轻Party因设置不切实际的`cancelDelay`或过于低的`cancelDelay`而意外永久卡住的风险。
+5. 执行`cancel()`必须已经超出了 $executedTime + cancelDelay$。
+6. 通过将完成时间设置为当前时间，并设置高位以标记提案已取消。
+7. 通过`delegatecall`调用提案引擎实现来执行取消操作。
 
 
 
