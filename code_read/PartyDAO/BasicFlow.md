@@ -415,6 +415,24 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
 6. 通过将完成时间设置为当前时间，并设置高位以标记提案已取消。
 7. 通过`delegatecall`调用提案引擎实现来执行取消操作。
 
+## <font color="#5395ca">6. 关于提案引擎</font>
+Party合约实际上不知道如何执行不同的提案类型，只将它们视为不透明的二进制数据`proposalData`。这个`proposalData`连同`progressData`（也是不透明的）通过`delegatecall`传递到`ProposalExecutionEngine.executeProposal()`中。从那里开始，`ProposalExecutionEngine`将：
+1. 检查是否有一个不同的提案没有完成其步骤。
+2. 如果这个提案是未完成的突出提案，则检查其接收到的`progressData`的哈希值是否与上次执行提案时发出的`progressData`的哈希值匹配。
+3. 解码`proposalData`的前4个字节以确定提案类型。
+4. 解码`proposalData`和`progressData`以执行提案中的下一步。
+5. 如果提案尚未完成，则返回非空的`nextProgressData`。
+
+将`ProposalExecutionEngine`与`Party`实例分离的原因是缩小Party合约对治理的关注点（已足够复杂），更重要的是，随着协议的成熟，Party可以升级它的`ProposalExecutionEngine`合约以支持更多的提案类型。
+
+`ProposalExecutionEngine`不是一个纯逻辑合约，它定义、拥有和维护自己的`私有`存储状态，存在于Party的上下文中：
+
+* `outstanding/incomplete (InProgress)`提案的提案ID。
+* 将要传递到下一次调用`executeProposal()`的`progressData`的哈希值，以推进未完成的提案。
+
+这些存储变量从一个常量、不重叠的槽索引开始，以避免冲突并简化对新存储模式的显式迁移。它不访问Party合约中定义的任何内联存储字段，Party合约也不访问这些存储变量。
+
+
 
 
 
