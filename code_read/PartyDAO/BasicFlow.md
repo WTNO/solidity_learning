@@ -432,9 +432,97 @@ Party合约实际上不知道如何执行不同的提案类型，只将它们视
 
 这些存储变量从一个常量、不重叠的槽索引开始，以避免冲突并简化对新存储模式的显式迁移。它不访问Party合约中定义的任何内联存储字段，Party合约也不访问这些存储变量。
 
+Party协议将在启动时支持5种提案类型：
+* `ArbitraryCalls Proposals`
+* `ListOnZora Proposals`
+* `ListOnOpensea Proposals`
+* `Fractionalize Proposals`
+* `UpgradeProposalEngineImpl Proposals`
 
+### <font color="#5395ca">6.1 ArbitraryCalls Proposals</font>
+本提案类型作为Party进行任意合约调用。为了防止珍贵的NFT被移出Party，对可以进行的调用类型有一定限制。
 
+这个提案是原子性的，可以在一步（即一个`execute()`调用）内完成：
+1. 每个调用按声明的顺序执行。
+2. 附加到每个调用的ETH必须由`Party.execute()`的调用者提供。如果所有成功的调用尝试消耗的总和超过了`msg.value`，则整个提案将revert。
+3. 如果调用具有非零的expectedResultHash，则会对调用的结果进行哈希处理，并与此值进行匹配。如果不匹配，则整个提案将revert。
+4. 如果调用是对Party本身的，则整个提案将revert。
+5. 如果调用是对IERC721.onERC721Received()函数的，则整个提案将revert。
+   * 请注意，Party合约也是治理NFT合约，因此调用此函数可能会欺骗某人认为他们收到了治理NFT。
+6. 如果提案没有一致通过，则会进行额外的检查以防止移动珍贵的NFT：
+   * 在执行所有调用之前，检查Party拥有哪些珍贵的NFT。然后在执行所有调用之后，确保我们仍然拥有它们，否则整个提案将revert。
+   * 如果调用是对`IERC721.approve()`的，并且目标是珍贵的NFT代币，并且代币ID是匹配的珍贵代币ID，则除非运营商将设置为零地址（撤销授权），否则将整个提案revert。
+   * 如果调用是对`IERC721.setApprovalForAll()`的，并且目标是珍贵的NFT代币，则除非批准状态将被设置为false，否则将整个提案revert。
+7. 一致的提案不会限制移动珍贵代币或为它们设置津贴。
 
+### <font color="#5395ca">6.2 ListOnZora Proposals</font>
+此提案类型在Zora V1拍卖中列出了Party持有的NFT。此提案始终有两个步骤（即2次execute()调用）：
+```java
+// 解析当前步骤
+ZoraStep step = params.progressData.length == 0
+    ? ZoraStep.None
+    : abi.decode(params.progressData, (ZoraStep));
+```
+1. 将代币转移到Zora拍卖行合约，并创建一个拍卖，该拍卖由listPrice（底价）和duration（拍卖期限）（在有人出价后开始）等参数组成。这将发出下一个progressData：
+```java
+token.approve(address(ZORA), tokenId);
+auctionId = ZORA.createAuction(
+    tokenId,
+    token,
+    duration,
+    listPrice,
+    payable(address(0)),
+    0,
+    IERC20(address(0)) // Indicates ETH sale
+);
+return
+    abi.encode(
+        ZoraStep.ListedOnZora, // 当前步骤。
+        ZoraProgressData({
+            auctionId: auctionId, // Zora拍卖ID。
+            // 拍卖可以取消的最短时间。
+            minExpiry: (block.timestamp + data.timeout).safeCastUint256ToUint40()
+        })
+    );
+```
+2. 取消或完成Zora拍卖。
+   * 如果拍卖从未出价且minExpiry时间已过，则取消拍卖。这也会将NFT退还给Party。
+   * 如果有人出价并且拍卖期限已过，则完成拍卖。这将将最高出价金额（以ETH计）转移到Party。还有可能有其他人已经完成了拍卖，此时Party已经拥有了ETH，此步骤将成为无操作。
+
+### <font color="#5395ca">6.3 ListOnOpensea Proposals</font>
+此提案类型最终尝试在OpenSea（Seaport 1.1）上架Party持有的NFT。由于OpenSea列表是限价订单，因此没有链上价格发现机制（与Zora拍卖不同）。为了减轻恶意提案以远低于其实际价值的价格上架珍贵NFT的影响，如果提案未被一致通过，则此提案类型将首先将NFT放入Zora拍卖中，该拍卖必须在没有收到任何出价的情况下结束，然后再上架OpenSea。如果它被一致通过，或所列出的NFT不是珍贵的，则跳过此步骤。这个Zora步骤的持续时间由全局值GLOBAL_OS_ZORA_AUCTION_TIMEOUT和GLOBAL_OS_ZORA_AUCTION_DURATION定义。
+
+此提案包含2-3个步骤（即2-3个execute（）调用），具体取决于提案是否被一致通过以及所列出的NFT是否珍贵：
+
+1. 第一次执行本类型提案：
+   * 如果提案未被一致通过并且`token + tokenId`很珍贵，则提案从这里开始。将代币转移到Zora拍卖行合约，创建一个拍卖，定义起始价格和结束价格（如果是正常拍卖，这将是相同的），拍卖时间为`GLOBAL_OS_ZORA_AUCTION_DURATION`（在有人出价后开始）。
+   * 如果是投票一致同意，或者代币不那么珍贵，或者没有Zora期限，可以假装我们已经从Zora那里获取了代币，直接跳过Zora拍卖阶段到下面的`2b`阶段。
+2. 现在它将分支为两条路径之一：
+   * 如果出价并进行了拍卖，则完成拍卖。
+     * 如果有人出价并且拍卖时间已过，则完成拍卖。这将把最高出价金额（以ETH计）转移到Party。还有可能是其他人已经完成了拍卖，此时Party已经拥有了ETH，此步骤变成`no-op`。此时提案已经完成，没有进一步的步骤。
+   * 如果提案被一致通过，或`token + tokenId`不是珍贵的，或`token + tokenId`很珍贵但在安全的Zora拍卖期间没有出价：
+     * 如果物品是为安全拍卖而列出的，从未被出价，并且progressData.minExpiry已过，则取消拍卖。这也会将NFT返回给Party。
+     * 授予OpenSea代币的津贴，并为NFT创建一个非托管的OpenSea列表，该列表具有起始和结束价格+任何额外费用，有效期为`duration` 秒。如果startPrice和endPrice不同，则将调整费用金额，使得费用的起始金额和结束金额与列表的起始价格和结束价格成比例。
+
+3. 清理OpenSea列表，发出带有结果的事件，并执行以下操作：
+   * 如果订单已成交，则Party拥有listPrice ETH，NFT的津贴已被使用，无需其他操作。
+   * 如果订单已过期，则没有人购买该列表，Party仍然拥有NFT。撤销OpenSea的代币津贴。
+
+### <font color="#5395ca">6.4 Fractionalize Proposals</font>
+本提案类型将NFT在Fractional V1上进行分式化，铸造分式化的ERC20代币，所有Party成员都可以通过分配来索取这些代币。  
+本提案是原子性的，仅需一步（即一个execute()调用）即可完成：
+1. 围绕`token + tokenId`创建新的Fractional V1金库。
+2. Curator将设置为address(0)。
+3. 将铸造`totalVotingPower fractional ERC20 tokens`，并由Party持有，稍后可以通过ERC20分发进行索取。
+
+### <font color="#5395ca">6.5 UpgradeProposalEngineImpl Proposals</font>
+本提案类型将Party的`ProposalExecutionEngine`实例升级到GLOBAL_PROPOSAL_ENGINE_IMPL全局值定义的最新版本。  
+本提案是原子性的，仅需一步（即一个execute()调用）即可完成：
+1. 在Globals合约中查找当前`ProposalExecutionEngine`实现地址，由`GLOBAL_PROPOSAL_ENGINE_IMPL`键入。
+2. 当前Party使用的ProposalExecutionEngine实现地址保留在一个明确的、不重叠的存储槽中，并将被新实现地址覆盖（请参见ProposalStorage）。
+3. Party将委托调用到新的`ProposalExecutionEngine`的`initialize()`函数中，传递旧实现的地址和initData迁移数据。
+4. 这使得新实现有一些能力执行状态迁移。例如，如果存储模式或语义发生了变化。
+5. proposer提供initData作为可能的提示来进行迁移过程。
 
 
 
