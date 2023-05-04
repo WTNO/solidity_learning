@@ -3,6 +3,9 @@ Party Protocol 提供了链上的功能，用于群体形成、协调和分配�
 1. 众筹阶段：在此阶段，参与者汇集ETH以获取一个NFT。
 2. 治理阶段：在此阶段，参与者对一个NFT进行治理（通常是通过众筹获得的）。
 
+## <font color="#5395ca">生命周期预览</font>
+<img src="./img/绘图1.jpg"/>
+
 # <font color="#5395ca">众筹阶段</font>
 创建自己的party时，需要选择自己想要参与的NFT，这个NFT通过名称、地址来搜索，或者粘贴来自OpenSea、Zora或Foundation的链接，根据你这一项输入的不同，会创建`BuyCrowdfund`、`CollectionBuyCrowdfund`、`AuctionCrowdfund`等多种类型的众筹。
 
@@ -524,7 +527,68 @@ return
 4. 这使得新实现有一些能力执行状态迁移。例如，如果存储模式或语义发生了变化。
 5. proposer提供initData作为可能的提示来进行迁移过程。
 
+## <font color="#5395ca">7. 分配</font>
+通过将Party的整个余额转移到`TokenDistributor`合约并立即创建由此Party管理的`distribution`来创建代币分配Party成员有权获得分配代币的份额，其比例与他们在此party中的相对投票权成比例（扣除费用）。
 
+`distribution`允许各方按其治理NFT的投票权比例向各方成员分配可交换代币和ETH。
+
+与提案不同，`distribution`不需要任何投票即可通过。任何一方成员都可以调用`distribute()`以分配由该方持有的任何ETH或ERC-20代币。
+
+在调用`distribute()`时，指定代币的整个余额将被转移到规范的`TokenDistributor`合约，并创建一个新的`distribution`。
+
+每个`distribution`都有一个唯一的ID。要与`distribution`交互，您需要发送整个`DistributionInfo`对象。`DistributionInfo`对象可以在分配创建时发出的`DistributionCreated`事件中找到。
+
+一旦创建了分配，NFT持有者可以调用`claim()`，同时发送`DistributionInfo`以及他们想要为其索赔的PartyGovernance token ID。如果用户想在一个交易中索取多个分配，他们还可以利用`batchClaim()`。
+
+每个`distribution`都可以设置`feeRecipient`和`feeBps`。Party创建时的参数`GovernanceOpts`中设置的`feeRecipient`和 `feeBps`，决定了Party对应的`distribution`中的`feeRecipient`和 `feeBps`。为了让feeRecipient索取他们的费用，feeRecipient必须调用`claimFee()`。如果feeRecipient是无法调用claimFee的智能合约，则可能无法收回费用，将永久锁定在合约中。
+
+> Consider the example:
+> 
+> 构建一个Party,feeRecipient为Bob，feeBps为250个基点（2.5％）。  
+> Keith拥有该party的20％所有权  
+> Donna拥有该party的30％所有权  
+> Jerry拥有该party的50％所有权  
+> 
+> 向party合约存入了1000 DAI，并为此DAI创建了一个新的分配。  
+> 当Bob调用`claimFee()`时，他们将收到25.00 DAI      $(1000 * 0.025)$  
+> 当Keith调用`claim()`时，他们将收到195.00 DAI      $(1000 * 0.975) * 0.2$  
+> 当Donna调用`claim()`时，他们将收到292.50 DAI      $(1000 * 0.975) * 0.3$  
+> 当Jerry调用`claim()`时，他们将收到487.50 DAI      $(1000 * 0.975)* 0.5$  
+
+### <font color="#5395ca">7.1 入口与参数</font>
+本功能实现位于`PartyGovernance`合约中的`distribute()`函数，参数如下：
+* `ITokenDistributor.TokenType tokenType`：要分配的代币类型。
+* `address token`：要分配的代币的地址。
+* `uint256 tokenId`：要分配的代币的ID。目前未使用，但将来可能用于支持其他分配类型。
+
+### <font color="#5395ca">7.2 过程</font>
+1. 获取`TokenDistribution`的地址。
+2. 创建Native代币`distribution`（也就是ETH）。
+   * 将当前Party持有的所有ETH转移到`TokenDistributor`合约。
+   * 创建Native `distribution`
+     * feeBps不能大于10000。
+     * 获取前面从Party转移到`TokenDistributor`合约的ERC20代币数额supply，要求不能为0。
+     * 计算fee和memberSupply
+     ```java
+     uint128 fee = (supply * args.feeBps) / 1e4;
+     uint128 memberSupply = supply - fee;
+     ```
+     * 构建`DistributionInfo`对象，记录在成员变量`_distributionStates`中，最后发出事件
+3. 否则必须是 ERC20 代币`distribution`。
+   * 将当前Party持有的所有ERC20代币转移到`TokenDistributor`合约
+   * 创建ERC20 `distribution`，具体步骤和NativeDistribution相同。
+     
+## <font color="#5395ca">8. claim</font>
+Party成员通过调用`TokenDistributor`中的`claim()`来获取其应该分配所得的ERC20代币或ETH，参数如下：
+* `DistributionInfo calldata info`：有关正在索要的`distribution`信息，也就是`distribute()`中构建的`DistributionInfo`对象。
+* `uint256 partyTokenId`：索取的 Party Token ID，对应一个治理NFT。
+
+具体过程如下：
+1. 调用者必须持有当前Party中`partyTokenId`对应的治理NFT。
+2. 核对传过来的`DistributionInfo`对象的哈希是否发生变化。
+3. 当前`partyTokenId`不能已经claim过，如果没有，则将`partyTokenId`标记为已领取其分发。
+4. 计算应支付给调用者的金额。
+5. 从`TokenDistributor`合约转账到调用者。
 
 
 
